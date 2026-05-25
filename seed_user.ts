@@ -20,7 +20,8 @@ async function main() {
   const pool = new Pool({ connectionString: DATABASE_URL });
   const db = drizzle(pool, { schema });
 
-  const passwordHash = await bcrypt.hash("admin123", 10);
+  const adminPassword = process.env.ADMIN_PASSWORD || "admin123";
+  const passwordHash = await bcrypt.hash(adminPassword, 10);
 
   try {
     await db
@@ -41,7 +42,7 @@ async function main() {
         },
       });
 
-    console.log("Seeded admin user: username=admin password=admin123");
+    console.log(`Seeded admin user: username=admin password=${adminPassword === "admin123" ? "admin123 (DEFAULT)" : "********"}`);
   } catch (error) {
     console.error("Error seeding user:", error);
     process.exit(1);
