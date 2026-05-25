@@ -8,15 +8,11 @@ function loadFromCloudinaryUrl(): boolean {
   return Boolean(cloudinary.config().cloud_name);
 }
 
-function cloudinaryApiKey() {
-  return process.env.CLOUDINARY_API_KEY ?? process.env.CLOUDINARY_API;
-}
-
 export function isCloudinaryConfigured(): boolean {
   if (process.env.CLOUDINARY_URL) return loadFromCloudinaryUrl();
   return Boolean(
     process.env.CLOUDINARY_CLOUD_NAME &&
-      cloudinaryApiKey() &&
+      process.env.CLOUDINARY_API_KEY &&
       process.env.CLOUDINARY_API_SECRET
   );
 }
@@ -28,7 +24,7 @@ function ensureCloudinaryConfig() {
   }
   cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: cloudinaryApiKey(),
+    api_key: process.env.CLOUDINARY_API_KEY,
     api_secret: process.env.CLOUDINARY_API_SECRET,
   });
 }

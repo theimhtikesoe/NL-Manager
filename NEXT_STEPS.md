@@ -9,10 +9,10 @@
 ## Remaining Phases:
 
 ### Phase 2: Environment Cleanup
-- [ ] Remove old/duplicate environment variables.
-- [ ] Remove MySQL/TiDB references.
-- [ ] Consolidate JWT and Cloudinary configurations.
-- [ ] Remove hardcoded fallback secrets.
+- [x] Remove old/duplicate environment variables.
+- [x] Remove MySQL/TiDB references.
+- [x] Consolidate JWT and Cloudinary configurations.
+- [x] Remove hardcoded fallback secrets.
 
 ### Phase 3: Authentication Stabilization
 - [ ] Audit login flow (server/routers/auth.ts).
