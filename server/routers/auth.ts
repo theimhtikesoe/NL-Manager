@@ -111,7 +111,13 @@ export const authRouter = router({
       }
     }),
 
-  me: protectedProcedure.query(({ ctx }) => ctx.user),
+  me: protectedProcedure.query(({ ctx }) => {
+    // TODO: Authentication temporarily disabled during workflow development
+    return ctx.user;
+  }),
 
-  logout: protectedProcedure.mutation(() => ({ success: true })),
+  logout: protectedProcedure.mutation(() => {
+    // TODO: Authentication temporarily disabled during workflow development
+    return { success: true };
+  }),
 });

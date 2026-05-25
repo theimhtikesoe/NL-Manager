@@ -45,14 +45,32 @@ export function useAuth(options?: UseAuthOptions) {
     setLocation("/login");
   }, [utils, setLocation]);
 
+  // TODO: Authentication temporarily disabled during workflow development
+  const isAuthDisabled = true; // Hardcoded for now as client doesn't have easy access to server env
+
   const state = useMemo(
-    () => ({
-      user: meQuery.data ?? null,
-      loading: isMounted ? (hasToken && meQuery.isLoading) : true,
-      error: meQuery.error ?? null,
-      isAuthenticated: Boolean(meQuery.data),
-    }),
-    [meQuery.data, meQuery.error, meQuery.isLoading, hasToken, isMounted]
+    () => {
+      if (isAuthDisabled && isMounted) {
+        return {
+          user: {
+            id: 0,
+            workerCode: "dev-admin",
+            name: "Admin (Dev Mode)",
+            role: "admin" as const,
+          },
+          loading: false,
+          error: null,
+          isAuthenticated: true,
+        };
+      }
+      return {
+        user: meQuery.data ?? null,
+        loading: isMounted ? (hasToken && meQuery.isLoading) : true,
+        error: meQuery.error ?? null,
+        isAuthenticated: Boolean(meQuery.data),
+      };
+    },
+    [meQuery.data, meQuery.error, meQuery.isLoading, hasToken, isMounted, isAuthDisabled]
   );
 
   useEffect(() => {

@@ -21,6 +21,21 @@ export async function createContext(
 ): Promise<TrpcContext> {
   let user: AuthUser | null = null;
 
+  // Development Auth Bypass: Inject mock admin user if AUTH_DISABLED is true
+  if (ENV.authDisabled) {
+    user = {
+      id: 0,
+      workerCode: "dev-admin",
+      name: "Admin (Dev Mode)",
+      role: "admin",
+    };
+    return {
+      req: opts.req,
+      res: opts.res,
+      user,
+    };
+  }
+
   try {
     const authHeader = opts.req.headers.authorization;
     if (authHeader?.startsWith("Bearer ")) {

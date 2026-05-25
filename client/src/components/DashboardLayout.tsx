@@ -65,7 +65,10 @@ export default function DashboardLayout({
     return <DashboardLayoutSkeleton />;
   }
 
-  if (!isAuthenticated || !user) {
+  // TODO: Authentication temporarily disabled during workflow development
+  const isAuthDisabled = true;
+
+  if (!isAuthDisabled && (!isAuthenticated || !user)) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-950">
         <div className="flex flex-col items-center gap-8 p-8 max-w-md w-full">
@@ -231,11 +234,18 @@ function DashboardLayoutContent({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
                 <DropdownMenuItem
-                  onClick={logout}
+                  onClick={() => {
+                    // TODO: Authentication temporarily disabled during workflow development
+                    if (isAuthDisabled) {
+                      console.log("Logout disabled in development mode");
+                      return;
+                    }
+                    logout();
+                  }}
                   className="cursor-pointer text-destructive focus:text-destructive"
                 >
                   <LogOut className="mr-2 h-4 w-4" />
-                  <span>Sign out</span>
+                  <span>Sign out (Disabled)</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
