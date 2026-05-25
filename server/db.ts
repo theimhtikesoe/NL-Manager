@@ -7,21 +7,34 @@ let _db: ReturnType<typeof drizzle<typeof schema>> | null = null;
 let _pool: Pool | null = null;
 
 export async function getDb() {
-  if (!_db && ENV.databaseUrl) {
+  if (!ENV.databaseUrl) {
+    console.error("[Database] DATABASE_URL is not defined");
+    return null;
+  }
+
+  if (!_db) {
     try {
       if (!_pool) {
+        console.log("[Database] Initializing new connection pool");
         _pool = new Pool({
           connectionString: ENV.databaseUrl,
-          max: ENV.isProduction ? 1 : 10, // Vercel serverless: keep pool small
+          max: ENV.isProduction ? 5 : 10, // Increased for stability, Vercel can handle a few more
           idleTimeoutMillis: 30000,
-          connectionTimeoutMillis: 5000,
-          ssl: { rejectUnauthorized: false }, // Required for Neon
+          connectionTimeoutMillis: 10000, // Increased timeout
+          ssl: { rejectUnauthorized: false },
+        });
+
+        _pool.on("error", (err) => {
+          console.error("[Database] Unexpected error on idle client", err);
+          _pool = null;
+          _db = null;
         });
       }
       _db = drizzle(_pool, { schema });
     } catch (error) {
-      console.warn("[Database] Failed to connect:", error);
+      console.error("[Database] Failed to connect:", error);
       _db = null;
+      _pool = null;
     }
   }
   return _db;
