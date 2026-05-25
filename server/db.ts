@@ -1,19 +1,21 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import * as schema from "../drizzle/schema";
+import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle<typeof schema>> | null = null;
 let _pool: Pool | null = null;
 
 export async function getDb() {
-  if (!_db && process.env.DATABASE_URL) {
+  if (!_db && ENV.databaseUrl) {
     try {
       if (!_pool) {
         _pool = new Pool({
-          connectionString: process.env.DATABASE_URL,
-          max: 10,
+          connectionString: ENV.databaseUrl,
+          max: ENV.isProduction ? 1 : 10, // Vercel serverless: keep pool small
           idleTimeoutMillis: 30000,
-          connectionTimeoutMillis: 2000,
+          connectionTimeoutMillis: 5000,
+          ssl: { rejectUnauthorized: false }, // Required for Neon
         });
       }
       _db = drizzle(_pool, { schema });

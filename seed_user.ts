@@ -15,12 +15,21 @@ if (!DATABASE_URL) {
 }
 
 async function main() {
-  console.log("Seeding default admin account...");
+  console.log("Starting production admin verification/seeding...");
 
-  const pool = new Pool({ connectionString: DATABASE_URL });
+  const pool = new Pool({ 
+    connectionString: DATABASE_URL,
+    ssl: { rejectUnauthorized: false } // Required for Neon in some environments
+  });
+  
   const db = drizzle(pool, { schema });
 
-  const adminPassword = process.env.ADMIN_PASSWORD || "admin123";
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (!adminPassword) {
+    console.error("CRITICAL: ADMIN_PASSWORD environment variable is not set. Admin seeding aborted.");
+    process.exit(1);
+  }
+
   const passwordHash = await bcrypt.hash(adminPassword, 10);
 
   try {
@@ -42,7 +51,7 @@ async function main() {
         },
       });
 
-    console.log(`Seeded admin user: username=admin password=${adminPassword === "admin123" ? "admin123 (DEFAULT)" : "********"}`);
+    console.log("Successfully seeded/updated admin user: username=admin");
   } catch (error) {
     console.error("Error seeding user:", error);
     process.exit(1);

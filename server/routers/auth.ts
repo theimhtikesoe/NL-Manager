@@ -20,9 +20,10 @@ export const authRouter = router({
       try {
         const db = await getDb();
         if (!db) {
+          console.error("[Auth] Database connection failed during login attempt");
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
-            message: "Database not available",
+            message: "Database connection failed. Please try again later.",
           });
         }
 
@@ -40,8 +41,6 @@ export const authRouter = router({
           });
         }
 
-        console.log(`[Auth] User found: ${worker.username}, attempting password verification`);
-        
         let valid = false;
         try {
           valid = await bcrypt.compare(
@@ -63,8 +62,6 @@ export const authRouter = router({
             message: "Invalid username or password",
           });
         }
-
-        console.log(`[Auth] Password valid for "${input.username}", signing token`);
 
         if (!ENV.jwtSecret) {
           console.error("[Auth] CRITICAL: JWT_SECRET is not configured!");
