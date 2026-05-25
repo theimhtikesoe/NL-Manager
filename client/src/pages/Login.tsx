@@ -31,6 +31,7 @@ export default function LoginPage() {
       }
     },
     onError: (err) => {
+      console.error("Login error:", err);
       setError(err.message || "Login failed");
     },
   });
