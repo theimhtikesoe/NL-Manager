@@ -4,7 +4,7 @@
 
 ### Prerequisites
 - Node.js 18+ and pnpm
-- MySQL 8.0+ or TiDB
+- PostgreSQL 14+ (e.g., Neon, Supabase)
 - Manus OAuth credentials
 
 ### Step 1: Environment Configuration
@@ -17,7 +17,7 @@ cp .env.example .env.local
 2. Update `.env.local` with your values:
 ```env
 # Database
-DATABASE_URL=mysql://user:password@localhost:3306/nl_manager
+DATABASE_URL=postgresql://user:password@localhost:5432/nl_manager
 
 # Authentication
 JWT_SECRET=your-super-secret-key-here
@@ -36,7 +36,7 @@ BUILT_IN_FORGE_API_KEY=your-api-key
 
 1. Create database:
 ```bash
-mysql -u root -p -e "CREATE DATABASE nl_manager CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+createdb nl_manager
 ```
 
 2. Run migrations:
@@ -60,11 +60,11 @@ Server will run on `http://localhost:3000`
 ### Prerequisites
 - Vercel account
 - GitHub repository connected
-- MySQL/TiDB database (e.g., PlanetScale, AWS RDS)
+- PostgreSQL database (e.g., Neon, Supabase, AWS RDS)
 
 ### Step 1: Database Setup
 
-1. Create a MySQL database on your hosting provider
+1. Create a PostgreSQL database on your hosting provider
 2. Note the connection string (DATABASE_URL)
 3. Run migrations in production:
 ```bash
@@ -77,7 +77,7 @@ Set these in Vercel dashboard under **Settings → Environment Variables**:
 
 | Variable | Value | Notes |
 |----------|-------|-------|
-| `DATABASE_URL` | `mysql://...` | Production database URL |
+| `DATABASE_URL` | `postgresql://...` | Production database URL |
 | `JWT_SECRET` | Random 32+ char string | Use `openssl rand -base64 32` |
 | `VITE_APP_ID` | Your Manus app ID | From Manus dashboard |
 | `OAUTH_SERVER_URL` | `https://oauth.manus.im` | Fixed value |
@@ -112,7 +112,7 @@ Monitor deployment in Vercel dashboard.
 ### Issue: "Database connection failed"
 **Solution:** 
 1. Verify DATABASE_URL format: `mysql://user:password@host:port/database`
-2. Test connection: `mysql -u user -p -h host -P port -D database`
+2. Test connection: `psql -U user -h host -p port -d database`
 3. Check firewall/security groups allow connection
 
 ### Issue: "OAuth callback not working"

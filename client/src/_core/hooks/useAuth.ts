@@ -25,7 +25,7 @@ export function useAuth(options?: UseAuthOptions) {
   const logout = useCallback(async () => {
     localStorage.removeItem("nl_token");
     localStorage.removeItem("worker_info");
-    utils.auth.me.setData(undefined, null);
+    utils.auth.me.setData(undefined, undefined);
     await utils.auth.me.invalidate();
     setLocation("/login");
   }, [utils, setLocation]);
