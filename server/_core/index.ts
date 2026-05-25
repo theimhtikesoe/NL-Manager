@@ -3,7 +3,7 @@ import express from "express";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
-import { appRouter } from "../routers";
+import { appRouter } from "../routers/index";
 import { createContext } from "./context";
 
 const app = express();
