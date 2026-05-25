@@ -54,18 +54,16 @@ function ProtectedRoute({
 }
 
 function Router() {
-  // TODO: Authentication temporarily disabled during workflow development
   return (
     <Switch>
-      {/* Redirect root and login to admin dashboard */}
-      <Route path="/login" component={AdminDashboard} />
-      <Route path="/" component={AdminDashboard} />
+      <Route path="/" component={Home} />
+      <Route path="/login" component={LoginPage} />
       
       <Route path="/admin/dashboard">
-        <ProtectedRoute component={AdminDashboard} />
+        <ProtectedRoute component={AdminDashboard} adminOnly />
       </Route>
       <Route path="/worker/workspace">
-        <ProtectedRoute component={WorkerWorkspace} />
+        <ProtectedRoute component={WorkerWorkspace} workerOnly />
       </Route>
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />

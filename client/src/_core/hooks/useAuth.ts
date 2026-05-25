@@ -46,7 +46,7 @@ export function useAuth(options?: UseAuthOptions) {
   }, [utils, setLocation]);
 
   // TODO: Authentication temporarily disabled during workflow development
-  const isAuthDisabled = true; // Hardcoded for now as client doesn't have easy access to server env
+  const isAuthDisabled = false; // Enable authentication by default
 
   const state = useMemo(
     () => {
