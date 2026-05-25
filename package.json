@@ -68,7 +68,6 @@
     "jose": "6.1.0",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.453.0",
-    "mysql2": "^3.15.0",
     "nanoid": "^5.1.5",
     "next-themes": "^0.4.6",
     "pdf-lib": "^1.17.1",

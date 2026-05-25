@@ -24,6 +24,8 @@ export const ENV = {
   cloudinaryUrl: process.env.CLOUDINARY_URL ?? "",
   cloudinaryApiKey: process.env.CLOUDINARY_API_KEY ?? "",
   cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET ?? "",
+  nodeEnv: process.env.NODE_ENV || "development",
   isProduction: process.env.NODE_ENV === "production",
   isDevelopment: process.env.NODE_ENV === "development",
+  port: parseInt(process.env.PORT || "3000", 10),
 };

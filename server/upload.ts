@@ -1,32 +1,28 @@
 import { v2 as cloudinary } from "cloudinary";
+import { ENV } from "./_core/env";
 
 export const UPLOAD_FOLDER = "nl-manager/proofs";
 
-function loadFromCloudinaryUrl(): boolean {
-  if (!process.env.CLOUDINARY_URL) return false;
-  cloudinary.config({ secure: true });
-  return Boolean(cloudinary.config().cloud_name);
+function ensureCloudinaryConfig() {
+  if (ENV.cloudinaryUrl) {
+    cloudinary.config({
+      cloudinary_url: ENV.cloudinaryUrl,
+      secure: true
+    });
+  } else {
+    cloudinary.config({
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+      api_key: ENV.cloudinaryApiKey,
+      api_secret: ENV.cloudinaryApiSecret,
+      secure: true
+    });
+  }
 }
 
 export function isCloudinaryConfigured(): boolean {
-  if (process.env.CLOUDINARY_URL) return loadFromCloudinaryUrl();
-  return Boolean(
-    process.env.CLOUDINARY_CLOUD_NAME &&
-      process.env.CLOUDINARY_API_KEY &&
-      process.env.CLOUDINARY_API_SECRET
-  );
-}
-
-function ensureCloudinaryConfig() {
-  if (process.env.CLOUDINARY_URL) {
-    loadFromCloudinaryUrl();
-    return;
-  }
-  cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET,
-  });
+  ensureCloudinaryConfig();
+  const cfg = cloudinary.config();
+  return Boolean(cfg.cloud_name && (cfg.api_key || ENV.cloudinaryUrl));
 }
 
 export type SignedUploadParams = {
@@ -45,7 +41,7 @@ export function createSignedUploadParams(): SignedUploadParams {
   const apiSecret = cfg.api_secret;
 
   if (!cloudName || !apiKey || !apiSecret) {
-    throw new Error("Cloudinary is not configured");
+    throw new Error("Cloudinary is not configured properly");
   }
 
   const timestamp = Math.round(Date.now() / 1000);
@@ -60,7 +56,6 @@ export function createSignedUploadParams(): SignedUploadParams {
 
 /**
  * Server-side upload — avoids browser signature issues and service worker interference.
- * Cloudinary auto-generates public_id; only folder is set.
  */
 export async function uploadMedia(
   dataBase64: string,
@@ -69,7 +64,7 @@ export async function uploadMedia(
 ): Promise<string> {
   if (!isCloudinaryConfigured()) {
     throw new Error(
-      "Cloudinary is not configured. Set CLOUDINARY_URL or CLOUDINARY_* env vars."
+      "Cloudinary is not configured. Please set CLOUDINARY_URL."
     );
   }
 
@@ -89,7 +84,7 @@ export async function uploadMedia(
       error instanceof Error ? error.message : "Cloudinary upload failed";
     if (message.includes("Invalid Signature") || message.includes("Invalid api_key")) {
       throw new Error(
-        "Cloudinary credentials are invalid. Check CLOUDINARY_URL or API key/secret in server env."
+        "Cloudinary credentials are invalid. Check CLOUDINARY_URL."
       );
     }
     throw new Error(message);
