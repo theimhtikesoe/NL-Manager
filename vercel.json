@@ -5,13 +5,19 @@
   "framework": "vite",
   "functions": {
     "api/index.ts": {
-      "runtime": "nodejs20.x"
+      "runtime": "nodejs20.x",
+      "memory": 1024,
+      "maxDuration": 10
     }
   },
   "rewrites": [
     {
       "source": "/api/trpc/:path*",
       "destination": "/api/index.ts"
+    },
+    {
+      "source": "/(assets/.*)",
+      "destination": "/$1"
     },
     {
       "source": "/(.*)",
