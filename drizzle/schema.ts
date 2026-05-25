@@ -58,7 +58,9 @@ export const machineCheckingLogs = pgTable("machine_checking_logs", {
   machineId: integer("machine_id").notNull(),
   checkedAt: timestamp("checked_at").defaultNow().notNull(),
   mediaUrl: text("media_url").notNull(),
-  status: checkLogStatusEnum("status").default("COMPLETED").notNull(),
+  notes: text("notes"),
+  adminComment: text("admin_comment"),
+  status: checkLogStatusEnum("status").default("PENDING").notNull(),
 });
 
 export const machinesRelations = relations(machines, ({ many }) => ({
