@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -19,11 +19,20 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [, setLocation] = useLocation();
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const loginMutation = trpc.auth.login.useMutation({
     onSuccess: (data) => {
-      localStorage.setItem("nl_token", data.token);
-      localStorage.setItem("worker_info", JSON.stringify(data.worker));
+      if (typeof window !== "undefined") {
+        localStorage.setItem("nl_token", data.token);
+        localStorage.setItem("worker_info", JSON.stringify(data.worker));
+      }
+      
+      console.info(`[Auth] Login successful for ${data.worker.name}, redirecting...`);
       if (data.worker.role === "admin") {
         setLocation("/admin/dashboard");
       } else {
@@ -31,15 +40,23 @@ export default function LoginPage() {
       }
     },
     onError: (err) => {
-      setError(err.message || "Login failed");
+      console.error("[Auth] Login error:", err);
+      if (err.message === "Failed to fetch") {
+        setError("Network error: Please check your internet connection and try again.");
+      } else {
+        setError(err.message || "Login failed: Please check your credentials.");
+      }
     },
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isMounted) return;
     setError("");
     loginMutation.mutate({ username, password });
   };
+
+  if (!isMounted) return null;
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-950 px-4">
