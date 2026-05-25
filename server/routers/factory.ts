@@ -39,10 +39,10 @@ export const factoryRouter = router({
   addWorker: adminProcedure
     .input(
       z.object({
-        workerCode: z.string().min(1),
-        name: z.string().min(1),
-        username: z.string().min(1),
-        password: z.string().min(4),
+        workerCode: z.string().min(3).regex(/^[A-Z0-9_-]+$/, "Worker code must be uppercase alphanumeric"),
+        name: z.string().min(2),
+        username: z.string().min(3).regex(/^[a-z0-9._-]+$/, "Username must be lowercase alphanumeric"),
+        password: z.string().min(6),
         role: z.enum(["admin", "worker"]).default("worker"),
       })
     )
@@ -50,20 +50,47 @@ export const factoryRouter = router({
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
 
+      // Check for duplicates
+      const existing = await db
+        .select()
+        .from(workers)
+        .where(
+          sql`${workers.username} = ${input.username} OR ${workers.workerCode} = ${input.workerCode}`
+        )
+        .limit(1);
+
+      if (existing.length > 0) {
+        const isUsername = existing[0].username === input.username;
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: isUsername 
+            ? "Username already exists" 
+            : "Worker code already exists",
+        });
+      }
+
       const passwordHash = await bcrypt.hash(input.password, 10);
 
-      const [row] = await db
-        .insert(workers)
-        .values({
-          workerCode: input.workerCode,
-          name: input.name,
-          username: input.username,
-          passwordHash,
-          role: input.role,
-        })
-        .returning({ id: workers.id });
+      try {
+        const [row] = await db
+          .insert(workers)
+          .values({
+            workerCode: input.workerCode.toUpperCase(),
+            name: input.name,
+            username: input.username.toLowerCase(),
+            passwordHash,
+            role: input.role,
+          })
+          .returning({ id: workers.id });
 
-      return { id: row.id };
+        return { id: row.id };
+      } catch (error: any) {
+        console.error("[Factory] addWorker error:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: error.message || "Failed to create worker",
+        });
+      }
     }),
 
   updateWorker: adminProcedure

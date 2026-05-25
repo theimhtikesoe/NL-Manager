@@ -429,6 +429,31 @@ function AdminWorkersPanel({
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
+  const validateAndAdd = () => {
+    if (workerCode.length < 3) return toast.error("Worker code too short");
+    if (name.length < 2) return toast.error("Name too short");
+    if (username.length < 3) return toast.error("Username too short");
+    if (password.length < 6) return toast.error("Password must be at least 6 characters");
+    
+    if (!/^[A-Z0-9_-]+$/.test(workerCode.toUpperCase())) {
+      return toast.error("Worker code must be alphanumeric");
+    }
+    
+    onAdd({ 
+      workerCode: workerCode.toUpperCase(), 
+      name, 
+      username: username.toLowerCase(), 
+      password, 
+      role: "worker" 
+    });
+    
+    // Clear form on success (the parent should handle this but we can do it here if we want)
+    setWorkerCode("");
+    setName("");
+    setUsername("");
+    setPassword("");
+  };
+
   return (
     <Card className="border-slate-800 bg-slate-900/80">
       <CardHeader>
@@ -439,15 +464,34 @@ function AdminWorkersPanel({
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <Input placeholder="WK001" value={workerCode} onChange={(e) => setWorkerCode(e.target.value)} className="border-slate-700 bg-slate-950" />
-          <Input placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} className="border-slate-700 bg-slate-950" />
-          <Input placeholder="username" value={username} onChange={(e) => setUsername(e.target.value)} className="border-slate-700 bg-slate-950" />
-          <Input placeholder="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="border-slate-700 bg-slate-950" />
+          <Input 
+            placeholder="WK001" 
+            value={workerCode} 
+            onChange={(e) => setWorkerCode(e.target.value.toUpperCase())} 
+            className="border-slate-700 bg-slate-950 uppercase" 
+          />
+          <Input 
+            placeholder="Name" 
+            value={name} 
+            onChange={(e) => setName(e.target.value)} 
+            className="border-slate-700 bg-slate-950" 
+          />
+          <Input 
+            placeholder="username" 
+            value={username} 
+            onChange={(e) => setUsername(e.target.value.toLowerCase())} 
+            className="border-slate-700 bg-slate-950" 
+          />
+          <Input 
+            placeholder="password" 
+            type="password" 
+            value={password} 
+            onChange={(e) => setPassword(e.target.value)} 
+            className="border-slate-700 bg-slate-950" 
+          />
           <Button
             disabled={pending}
-            onClick={() =>
-              onAdd({ workerCode, name, username, password, role: "worker" })
-            }
+            onClick={validateAndAdd}
           >
             <Plus className="mr-1 h-4 w-4" />
             Add
