@@ -15,11 +15,11 @@
 - [x] Remove hardcoded fallback secrets.
 
 ### Phase 3: Authentication Stabilization
-- [ ] Audit login flow (server/routers/auth.ts).
-- [ ] Verify JWT sign/verify consistency.
-- [ ] Verify bcryptjs comparison logic.
-- [ ] Add production-safe auth logging.
-- [ ] Ensure mobile compatibility (Safari/Chrome on iPhone).
+- [x] Audit login flow (server/routers/auth.ts).
+- [x] Verify JWT sign/verify consistency.
+- [x] Verify bcryptjs comparison logic.
+- [x] Add production-safe auth logging.
+- [x] Ensure mobile compatibility (Safari/Chrome on iPhone).
 
 ### Phase 4: Runtime and Vercel Compatibility
 - [ ] Set Node.js runtime to 20.x in package.json/vercel.json.

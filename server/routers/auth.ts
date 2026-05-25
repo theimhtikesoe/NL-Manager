@@ -66,8 +66,12 @@ export const authRouter = router({
 
         console.log(`[Auth] Password valid for "${input.username}", signing token`);
 
-        if (!ENV.jwtSecret || ENV.jwtSecret === "fallback_secret_for_latyar_factory") {
-          console.warn("[Auth] WARNING: Using fallback JWT_SECRET in production!");
+        if (!ENV.jwtSecret) {
+          console.error("[Auth] CRITICAL: JWT_SECRET is not configured!");
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Server configuration error",
+          });
         }
 
         let token;
