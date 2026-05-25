@@ -29,9 +29,13 @@ const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (!(error instanceof TRPCClientError)) return;
   if (typeof window === "undefined") return;
   
-  // Log transport/network errors for debugging in production
-  if (error.message === "Failed to fetch" || error.message.includes("network")) {
-    console.error("[tRPC Transport Error]:", error);
+  // Production-safe transport error logging
+  if (error.message === "Failed to fetch" || error.message.toLowerCase().includes("network")) {
+    console.error("[tRPC Transport Error]: Connection failed. Verify API endpoint and network status.", {
+      message: error.message,
+      url: getBaseUrl(),
+      timestamp: new Date().toISOString()
+    });
   }
 
   if (error.message !== UNAUTHED_ERR_MSG) return;

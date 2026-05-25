@@ -2,6 +2,16 @@
 
 This document summarizes the key features and systems that need to be implemented to complete the NL-Manager project, categorized into four main pillars.
 
+## 0. Production Stabilization (CURRENT)
+Final production stabilization pass before live deployment.
+- [x] **Environment Cleanup**: Removed old variables, centralized secrets, and removed MySQL dependencies.
+- [x] **Auth Stabilization**: Audited login flow, fixed JWT/bcrypt consistency, and added production logging.
+- [x] **Runtime Compatibility**: Set Node 20.x, configured Vercel serverless, and handled hydration.
+- [x] **Database Verification**: Optimized Neon connection pooling for serverless environments.
+- [ ] **tRPC v11 Networking**: Ensure absolute URLs and add transport error logging.
+- [ ] **Security Hardening**: Change default admin password and remove insecure fallbacks.
+- [ ] **Final Deployment Check**: Verify production login and Vercel stability.
+
 ## 1. Worker Management
 Complete the administrative interface for managing the workforce.
 - [ ] **Worker Registration UI**: Build a comprehensive form for adding new workers with personal details and documentation.
@@ -31,4 +41,4 @@ Implement performance monitoring and automated documentation.
 - [ ] **Export & Distribution**: Add functionality to download and share performance reports for administrative review.
 
 ---
-*Last Updated: May 25, 2026*
+*Last Updated: May 26, 2026*
