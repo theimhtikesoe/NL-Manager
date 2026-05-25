@@ -9,19 +9,35 @@ import "./index.css";
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { staleTime: 10_000, retry: 1 },
+    queries: { 
+      staleTime: 10_000, 
+      retry: (failureCount, error) => {
+        if (error instanceof TRPCClientError && error.data?.code === "UNAUTHORIZED") return false;
+        return failureCount < 2;
+      },
+    },
   },
 });
 
+const getBaseUrl = () => {
+  if (typeof window !== "undefined") return window.location.origin;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return `http://localhost:${process.env.PORT ?? 3000}`;
+};
+
 const redirectToLoginIfUnauthorized = (error: unknown) => {
-  if (!(error instanceof TRPCClientError)) {
-    console.error("Non-TRPCClientError:", error);
-    return;
-  }
+  if (!(error instanceof TRPCClientError)) return;
   if (typeof window === "undefined") return;
-  if (error.message !== UNAUTHED_ERR_MSG) {
-    console.error("TRPCClientError (not unauthed):\
+  
+  // Log transport/network errors for debugging in production
+  if (error.message === "Failed to fetch" || error.message.includes("network")) {
+    console.error("[tRPC Transport Error]:", error);
+  }
+
+  if (error.message !== UNAUTHED_ERR_MSG) return;
   if (window.location.pathname === "/login") return;
+
+  console.warn("[Auth] Unauthorized access detected, clearing session and redirecting...");
   localStorage.removeItem("nl_token");
   localStorage.removeItem("worker_info");
   window.location.href = "/login";
@@ -43,8 +59,9 @@ const trpcClient = trpc.createClient({
   transformer: superjson,
   links: [
     httpBatchLink({
-      url: `${window.location.origin}/api/trpc`,
+      url: `${getBaseUrl()}/api/trpc`,
       headers() {
+        if (typeof window === "undefined") return {};
         const token = localStorage.getItem("nl_token");
         return token ? { Authorization: `Bearer ${token}` } : {};
       },
@@ -52,10 +69,13 @@ const trpcClient = trpc.createClient({
   ],
 });
 
-createRoot(document.getElementById("root")!).render(
-  <trpc.Provider client={trpcClient} queryClient={queryClient}>
-    <QueryClientProvider client={queryClient}>
-      <App />
-    </QueryClientProvider>
-  </trpc.Provider>
-);
+const container = document.getElementById("root");
+if (container) {
+  createRoot(container).render(
+    <trpc.Provider client={trpcClient} queryClient={queryClient}>
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    </trpc.Provider>
+  );
+}
