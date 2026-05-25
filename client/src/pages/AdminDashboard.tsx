@@ -24,6 +24,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -41,8 +42,14 @@ import {
   Trash2,
   Users,
   Video,
+  CheckCircle2,
+  XCircle,
+  MessageSquare,
+  Clock,
+  Filter,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Textarea } from "@/components/ui/textarea";
 
 export default function AdminDashboard() {
   const { user, logout } = useAuth();
@@ -67,7 +74,6 @@ export default function AdminDashboard() {
     onSuccess: () => {
       toast.success("Worker added");
       refetchWorkers();
-      utils.factory.getWorkers.invalidate();
     },
     onError: (e) => toast.error(e.message),
   });
@@ -105,7 +111,37 @@ export default function AdminDashboard() {
     onSuccess: () => refetchShifts(),
   });
 
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const reviewLog = trpc.factory.reviewCheckingLog.useMutation({
+    onSuccess: () => {
+      toast.success("Review submitted");
+      refetchLogs();
+      refetchGrid();
+      setReviewItem(null);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const [reviewItem, setReviewItem] = useState<any>(null);
+  const [adminComment, setAdminComment] = useState("");
+  const [filterStatus, setFilterStatus] = useState<string>("ALL");
+
+  const filteredLogs = liveLogs.filter((log) => {
+    if (filterStatus === "ALL") return true;
+    return log.status === filterStatus;
+  });
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "PENDING":
+        return <Badge className="bg-amber-500 text-slate-950">Pending</Badge>;
+      case "COMPLETED":
+        return <Badge className="bg-emerald-600">Approved</Badge>;
+      case "REJECTED":
+        return <Badge className="bg-red-600">Rejected</Badge>;
+      default:
+        return <Badge variant="outline">{status}</Badge>;
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -132,50 +168,65 @@ export default function AdminDashboard() {
         <section>
           <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-slate-400">
             <Cpu className="h-4 w-4" />
-            Machine Status
+            Machine Status (Today)
           </h2>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {statusGrid.map((m) => (
               <Card
                 key={m.id}
-                className="border-slate-800 bg-slate-900/80"
+                className={`border-slate-800 bg-slate-900/80 transition-all ${
+                  m.lastStatus === "REJECTED" ? "border-red-500/50" : ""
+                }`}
               >
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
                     <CardTitle className="text-base">{m.machineName}</CardTitle>
-                    <Badge
-                      variant={m.checkedToday ? "default" : "destructive"}
-                      className={
-                        m.checkedToday
-                          ? "bg-emerald-600"
-                          : "bg-red-600"
-                      }
-                    >
-                      {m.checkedToday ? "Checked" : "Pending"}
-                    </Badge>
+                    {m.checkedToday ? (
+                      getStatusBadge(m.lastStatus)
+                    ) : (
+                      <Badge variant="outline" className="text-slate-500">Not Checked</Badge>
+                    )}
                   </div>
                   <CardDescription className="font-mono text-xs">
                     {m.machineCode}
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="text-xs text-slate-500">
-                  {m.location || "—"} · {m.status}
+                <CardContent className="text-xs text-slate-500 space-y-1">
+                  <p>{m.location || "—"} · {m.status}</p>
+                  {m.lastCheckedAt && (
+                    <p className="flex items-center gap-1 text-[10px] text-slate-600">
+                      <Clock className="h-3 w-3" />
+                      {new Date(m.lastCheckedAt).toLocaleTimeString()}
+                    </p>
+                  )}
                 </CardContent>
               </Card>
             ))}
-            {statusGrid.length === 0 && (
-              <p className="col-span-full text-sm text-slate-500">
-                No machines registered yet.
-              </p>
-            )}
           </div>
         </section>
 
         {/* Live feed */}
         <section>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">
-            Live Inspection Feed
-          </h2>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400">
+              Inspection Review Feed
+            </h2>
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-slate-500" />
+              <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <SelectTrigger className="w-[140px] h-8 bg-slate-900 border-slate-800 text-xs">
+                  <SelectValue placeholder="Filter Status" />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-900 border-slate-800">
+                  <SelectItem value="ALL">All Logs</SelectItem>
+                  <SelectItem value="PENDING">Pending</SelectItem>
+                  <SelectItem value="COMPLETED">Approved</SelectItem>
+                  <SelectItem value="REJECTED">Rejected</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          
           <Card className="border-slate-800 bg-slate-900/80">
             <CardContent className="p-0">
               <Table>
@@ -184,43 +235,51 @@ export default function AdminDashboard() {
                     <TableHead>Worker</TableHead>
                     <TableHead>Machine</TableHead>
                     <TableHead>Time</TableHead>
-                    <TableHead>Proof</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {liveLogs.map((log) => (
+                  {filteredLogs.map((log) => (
                     <TableRow key={log.id} className="border-slate-800">
-                      <TableCell>{log.workerName ?? "—"}</TableCell>
+                      <TableCell className="font-medium">{log.workerName ?? "—"}</TableCell>
                       <TableCell>
-                        {log.machineName}{" "}
-                        <span className="text-slate-500">
-                          ({log.machineCode})
-                        </span>
+                        <div>
+                          {log.machineName}
+                          <div className="text-[10px] text-slate-500 font-mono">{log.machineCode}</div>
+                        </div>
                       </TableCell>
-                      <TableCell className="text-slate-400">
+                      <TableCell className="text-slate-400 text-xs">
                         {log.checkedAt
                           ? new Date(log.checkedAt).toLocaleString()
                           : "—"}
                       </TableCell>
                       <TableCell>
+                        {getStatusBadge(log.status)}
+                      </TableCell>
+                      <TableCell className="text-right">
                         <Button
                           size="sm"
-                          variant="secondary"
-                          onClick={() => setPreviewUrl(log.mediaUrl)}
+                          variant={log.status === "PENDING" ? "default" : "secondary"}
+                          className={log.status === "PENDING" ? "bg-amber-500 text-slate-950 hover:bg-amber-400" : ""}
+                          onClick={() => {
+                            setReviewItem(log);
+                            setAdminComment(log.adminComment || "");
+                          }}
                         >
                           <Video className="mr-1 h-3 w-3" />
-                          View
+                          {log.status === "PENDING" ? "Review" : "View"}
                         </Button>
                       </TableCell>
                     </TableRow>
                   ))}
-                  {liveLogs.length === 0 && (
+                  {filteredLogs.length === 0 && (
                     <TableRow>
                       <TableCell
-                        colSpan={4}
-                        className="py-8 text-center text-slate-500"
+                        colSpan={5}
+                        className="py-12 text-center text-slate-500"
                       >
-                        No inspections yet today.
+                        No inspections found for the selected filter.
                       </TableCell>
                     </TableRow>
                   )}
@@ -268,32 +327,86 @@ export default function AdminDashboard() {
         </Tabs>
       </main>
 
-      <Dialog open={!!previewUrl} onOpenChange={() => setPreviewUrl(null)}>
-        <DialogContent className="max-w-2xl border-slate-800 bg-slate-900">
-          <DialogHeader>
-            <DialogTitle>Inspection Proof</DialogTitle>
-          </DialogHeader>
-          {previewUrl && (
-            <div className="space-y-2">
-              {previewUrl.match(/\.(mp4|webm|mov)/i) ? (
-                <video src={previewUrl} controls className="w-full rounded-lg" />
-              ) : (
-                <img
-                  src={previewUrl}
-                  alt="Proof"
-                  className="max-h-[70vh] w-full rounded-lg object-contain"
-                />
+      {/* Review Dialog */}
+      <Dialog open={!!reviewItem} onOpenChange={() => setReviewItem(null)}>
+        <DialogContent className="max-w-3xl border-slate-800 bg-slate-900 p-0 overflow-hidden">
+          <div className="grid md:grid-cols-2">
+            <div className="bg-black flex items-center justify-center min-h-[300px]">
+              {reviewItem?.mediaUrl && (
+                reviewItem.mediaUrl.match(/\.(mp4|webm|mov)/i) ? (
+                  <video src={reviewItem.mediaUrl} controls className="w-full h-full object-contain" />
+                ) : (
+                  <img
+                    src={reviewItem.mediaUrl}
+                    alt="Proof"
+                    className="w-full h-full object-contain"
+                  />
+                )
               )}
-              <a
-                href={previewUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-sm text-amber-400 hover:underline"
-              >
-                Open in new tab
-              </a>
             </div>
-          )}
+            <div className="p-6 flex flex-col">
+              <DialogHeader className="mb-4">
+                <DialogTitle className="flex items-center justify-between">
+                  <span>Inspection Details</span>
+                  {reviewItem && getStatusBadge(reviewItem.status)}
+                </DialogTitle>
+                <CardDescription>
+                  Submitted by {reviewItem?.workerName} for {reviewItem?.machineName}
+                </CardDescription>
+              </DialogHeader>
+
+              <div className="space-y-4 flex-1">
+                <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                  <p className="text-[10px] text-slate-500 uppercase font-bold mb-1 flex items-center gap-1">
+                    <MessageSquare className="h-3 w-3" /> Worker Notes
+                  </p>
+                  <p className="text-sm text-slate-300 italic">
+                    {reviewItem?.notes || "No notes provided by worker."}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                    Admin Feedback
+                  </label>
+                  <Textarea
+                    placeholder="Add comments or reasons for rejection..."
+                    className="bg-slate-950 border-slate-800 min-h-[100px]"
+                    value={adminComment}
+                    onChange={(e) => setAdminComment(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <DialogFooter className="mt-6 gap-2 sm:gap-0">
+                <Button
+                  variant="destructive"
+                  className="flex-1"
+                  disabled={reviewLog.isPending}
+                  onClick={() => reviewLog.mutate({ 
+                    id: reviewItem.id, 
+                    status: "REJECTED", 
+                    adminComment 
+                  })}
+                >
+                  <XCircle className="mr-2 h-4 w-4" />
+                  Reject
+                </Button>
+                <Button
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-500"
+                  disabled={reviewLog.isPending}
+                  onClick={() => reviewLog.mutate({ 
+                    id: reviewItem.id, 
+                    status: "COMPLETED", 
+                    adminComment 
+                  })}
+                >
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                  Approve
+                </Button>
+              </DialogFooter>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
@@ -306,14 +419,8 @@ function AdminWorkersPanel({
   onDelete,
   pending,
 }: {
-  workers: { id: number; workerCode: string; name: string; username: string; role: string }[];
-  onAdd: (v: {
-    workerCode: string;
-    name: string;
-    username: string;
-    password: string;
-    role: "admin" | "worker";
-  }) => void;
+  workers: any[];
+  onAdd: (v: any) => void;
   onDelete: (id: number) => void;
   pending: boolean;
 }) {
@@ -385,8 +492,8 @@ function AdminMachinesPanel({
   onDelete,
   pending,
 }: {
-  machines: { id: number; machineCode: string; machineName: string; location: string | null }[];
-  onAdd: (v: { machineCode: string; machineName: string; location?: string }) => void;
+  machines: any[];
+  onAdd: (v: any) => void;
   onDelete: (id: number) => void;
   pending: boolean;
 }) {
@@ -421,9 +528,9 @@ function AdminMachinesPanel({
           <TableBody>
             {machines.map((m) => (
               <TableRow key={m.id} className="border-slate-800">
-                <TableCell className="font-mono">{m.machineCode}</TableCell>
+                <TableCell>{m.machineCode}</TableCell>
                 <TableCell>{m.machineName}</TableCell>
-                <TableCell>{m.location ?? "—"}</TableCell>
+                <TableCell>{m.location || "—"}</TableCell>
                 <TableCell>
                   <Button size="icon" variant="ghost" onClick={() => onDelete(m.id)}>
                     <Trash2 className="h-4 w-4 text-red-400" />
@@ -446,29 +553,16 @@ function AdminShiftsPanel({
   onDelete,
   pending,
 }: {
-  shifts: {
-    id: number;
-    workerName: string | null;
-    machineName: string | null;
-    assignedDate: string;
-    shiftType: string;
-  }[];
-  workers: { id: number; name: string }[];
-  machines: { id: number; machineName: string }[];
-  onAssign: (v: {
-    workerId: number;
-    machineId: number;
-    assignedDate: string;
-    shiftType: "DAY" | "NIGHT";
-  }) => void;
+  shifts: any[];
+  workers: any[];
+  machines: any[];
+  onAssign: (v: any) => void;
   onDelete: (id: number) => void;
   pending: boolean;
 }) {
-  const [workerId, setWorkerId] = useState<string>("");
-  const [machineId, setMachineId] = useState<string>("");
-  const [assignedDate, setAssignedDate] = useState(
-    new Date().toISOString().slice(0, 10)
-  );
+  const [workerId, setWorkerId] = useState("");
+  const [machineId, setMachineId] = useState("");
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [shiftType, setShiftType] = useState<"DAY" | "NIGHT">("DAY");
 
   return (
@@ -477,69 +571,51 @@ function AdminShiftsPanel({
         <CardTitle className="text-base">Shift Assignments</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex flex-wrap gap-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <Select value={workerId} onValueChange={setWorkerId}>
-            <SelectTrigger className="w-40 border-slate-700 bg-slate-950">
-              <SelectValue placeholder="Worker" />
+            <SelectTrigger className="border-slate-700 bg-slate-950">
+              <SelectValue placeholder="Select Worker" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="bg-slate-900 border-slate-800">
               {workers.map((w) => (
-                <SelectItem key={w.id} value={String(w.id)}>
-                  {w.name}
-                </SelectItem>
+                <SelectItem key={w.id} value={w.id.toString()}>{w.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
           <Select value={machineId} onValueChange={setMachineId}>
-            <SelectTrigger className="w-40 border-slate-700 bg-slate-950">
-              <SelectValue placeholder="Machine" />
+            <SelectTrigger className="border-slate-700 bg-slate-950">
+              <SelectValue placeholder="Select Machine" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="bg-slate-900 border-slate-800">
               {machines.map((m) => (
-                <SelectItem key={m.id} value={String(m.id)}>
-                  {m.machineName}
-                </SelectItem>
+                <SelectItem key={m.id} value={m.id.toString()}>{m.machineName}</SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <Input
-            type="date"
-            value={assignedDate}
-            onChange={(e) => setAssignedDate(e.target.value)}
-            className="w-40 border-slate-700 bg-slate-950"
-          />
-          <Select
-            value={shiftType}
-            onValueChange={(v) => setShiftType(v as "DAY" | "NIGHT")}
-          >
-            <SelectTrigger className="w-28 border-slate-700 bg-slate-950">
-              <SelectValue />
+          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="border-slate-700 bg-slate-950" />
+          <Select value={shiftType} onValueChange={(v: any) => setShiftType(v)}>
+            <SelectTrigger className="border-slate-700 bg-slate-950">
+              <SelectValue placeholder="Shift" />
             </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="DAY">DAY</SelectItem>
-              <SelectItem value="NIGHT">NIGHT</SelectItem>
+            <SelectContent className="bg-slate-900 border-slate-800">
+              <SelectItem value="DAY">Day</SelectItem>
+              <SelectItem value="NIGHT">Night</SelectItem>
             </SelectContent>
           </Select>
           <Button
             disabled={pending || !workerId || !machineId}
-            onClick={() =>
-              onAssign({
-                workerId: Number(workerId),
-                machineId: Number(machineId),
-                assignedDate,
-                shiftType,
-              })
-            }
+            onClick={() => onAssign({ workerId: parseInt(workerId), machineId: parseInt(machineId), assignedDate: date, shiftType })}
           >
+            <Plus className="mr-1 h-4 w-4" />
             Assign
           </Button>
         </div>
         <Table>
           <TableHeader>
             <TableRow className="border-slate-800">
+              <TableHead>Date</TableHead>
               <TableHead>Worker</TableHead>
               <TableHead>Machine</TableHead>
-              <TableHead>Date</TableHead>
               <TableHead>Shift</TableHead>
               <TableHead />
             </TableRow>
@@ -547,10 +623,12 @@ function AdminShiftsPanel({
           <TableBody>
             {shifts.map((s) => (
               <TableRow key={s.id} className="border-slate-800">
+                <TableCell>{s.assignedDate}</TableCell>
                 <TableCell>{s.workerName}</TableCell>
                 <TableCell>{s.machineName}</TableCell>
-                <TableCell>{s.assignedDate}</TableCell>
-                <TableCell>{s.shiftType}</TableCell>
+                <TableCell>
+                  <Badge variant="outline">{s.shiftType}</Badge>
+                </TableCell>
                 <TableCell>
                   <Button size="icon" variant="ghost" onClick={() => onDelete(s.id)}>
                     <Trash2 className="h-4 w-4 text-red-400" />
