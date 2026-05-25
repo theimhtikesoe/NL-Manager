@@ -2,7 +2,7 @@
   "buildCommand": "pnpm build",
   "outputDirectory": "dist/public",
   "installCommand": "pnpm install",
-  "framework": "other",
+  "framework": "vite",
   "rewrites": [
     {
       "source": "/api/trpc/:path*",
