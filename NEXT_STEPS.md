@@ -32,10 +32,10 @@
 - [x] Configure connection pooling for Vercel serverless environment.
 
 ### Phase 6: tRPC and Networking Fixes
-- [ ] Verify tRPC v11 configuration.
-- [ ] Ensure transformer is correctly placed (client-side only for v11 if required).
-- [ ] Ensure absolute URLs for all fetch calls.
-- [ ] Add transport error logging.
+- [x] Verify tRPC v11 configuration.
+- [x] Ensure transformer is correctly placed (client-side only for v11 if required).
+- [x] Ensure absolute URLs for all fetch calls.
+- [x] Add transport error logging.
 
 ### Phase 7: Production Hardening and Security
 - [ ] Remove debug code and console logs.
