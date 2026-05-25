@@ -237,7 +237,10 @@ export const factoryRouter = router({
       );
 
     const checked = await db
-      .select({ machineId: machineCheckingLogs.machineId })
+      .select({ 
+        machineId: machineCheckingLogs.machineId,
+        status: machineCheckingLogs.status 
+      })
       .from(machineCheckingLogs)
       .where(
         and(
@@ -246,11 +249,12 @@ export const factoryRouter = router({
         )
       );
 
-    const checkedSet = new Set(checked.map((c) => c.machineId));
+    const checkedMap = new Map(checked.map((c) => [c.machineId, c.status]));
 
     return rows.map((r) => ({
       ...r,
-      checked: checkedSet.has(r.machineId),
+      checked: checkedMap.has(r.machineId),
+      checkStatus: checkedMap.get(r.machineId) || null,
     }));
   }),
 
@@ -295,6 +299,7 @@ export const factoryRouter = router({
         shiftId: z.number(),
         machineId: z.number(),
         mediaUrl: z.string().min(1),
+        notes: z.string().optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
@@ -345,7 +350,8 @@ export const factoryRouter = router({
           workerId: ctx.user.id,
           machineId: input.machineId,
           mediaUrl: input.mediaUrl,
-          status: "COMPLETED",
+          notes: input.notes ?? null,
+          status: "PENDING",
         })
         .returning();
 
@@ -361,6 +367,8 @@ export const factoryRouter = router({
         id: machineCheckingLogs.id,
         checkedAt: machineCheckingLogs.checkedAt,
         mediaUrl: machineCheckingLogs.mediaUrl,
+        notes: machineCheckingLogs.notes,
+        adminComment: machineCheckingLogs.adminComment,
         status: machineCheckingLogs.status,
         workerName: workers.name,
         machineName: machines.machineName,
@@ -370,8 +378,31 @@ export const factoryRouter = router({
       .leftJoin(workers, eq(machineCheckingLogs.workerId, workers.id))
       .leftJoin(machines, eq(machineCheckingLogs.machineId, machines.id))
       .orderBy(desc(machineCheckingLogs.checkedAt))
-      .limit(50);
+      .limit(100);
   }),
+
+  reviewCheckingLog: adminProcedure
+    .input(
+      z.object({
+        id: z.number(),
+        status: z.enum(["COMPLETED", "REJECTED"]),
+        adminComment: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
+
+      await db
+        .update(machineCheckingLogs)
+        .set({
+          status: input.status,
+          adminComment: input.adminComment ?? null,
+        })
+        .where(eq(machineCheckingLogs.id, input.id));
+
+      return { success: true };
+    }),
 
   getMachineStatusGrid: adminProcedure.query(async () => {
     const db = await getDb();
@@ -384,22 +415,24 @@ export const factoryRouter = router({
       .select({
         machineId: machineCheckingLogs.machineId,
         checkedAt: machineCheckingLogs.checkedAt,
+        status: machineCheckingLogs.status,
       })
       .from(machineCheckingLogs)
       .where(sql`DATE(${machineCheckingLogs.checkedAt}) = ${today}`);
 
-    const checkedMap = new Map<number, Date>();
+    const checkedMap = new Map<number, { checkedAt: Date; status: string }>();
     for (const log of todayLogs) {
       const prev = checkedMap.get(log.machineId);
-      if (!prev || log.checkedAt > prev) {
-        checkedMap.set(log.machineId, log.checkedAt);
+      if (!prev || log.checkedAt > prev.checkedAt) {
+        checkedMap.set(log.machineId, { checkedAt: log.checkedAt, status: log.status });
       }
     }
 
     return allMachines.map((m) => ({
       ...m,
       checkedToday: checkedMap.has(m.id),
-      lastCheckedAt: checkedMap.get(m.id) ?? null,
+      lastCheckedAt: checkedMap.get(m.id)?.checkedAt ?? null,
+      lastStatus: checkedMap.get(m.id)?.status ?? null,
     }));
   }),
 });
