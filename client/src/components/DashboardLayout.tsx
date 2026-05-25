@@ -43,29 +43,37 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const [sidebarWidth, setSidebarWidth] = useState(() => {
-    const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
-    return saved ? parseInt(saved, 10) : DEFAULT_WIDTH;
-  });
-  const { loading, user } = useAuth();
+  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_WIDTH);
+  const { loading, user, isAuthenticated } = useAuth();
+  const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
-  }, [sidebarWidth]);
+    setIsMounted(true);
+    const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
+    if (saved) {
+      setSidebarWidth(parseInt(saved, 10));
+    }
+  }, []);
 
-  if (loading) {
-    return <DashboardLayoutSkeleton />
+  useEffect(() => {
+    if (isMounted) {
+      localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
+    }
+  }, [sidebarWidth, isMounted]);
+
+  if (!isMounted || loading) {
+    return <DashboardLayoutSkeleton />;
   }
 
-  if (!user) {
+  if (!isAuthenticated || !user) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center min-h-screen bg-slate-950">
         <div className="flex flex-col items-center gap-8 p-8 max-w-md w-full">
           <div className="flex flex-col items-center gap-6">
-            <h1 className="text-2xl font-semibold tracking-tight text-center">
+            <h1 className="text-2xl font-semibold tracking-tight text-center text-white">
               Sign in to continue
             </h1>
-            <p className="text-sm text-muted-foreground text-center max-w-sm">
+            <p className="text-sm text-slate-400 text-center max-w-sm">
               Access to this dashboard requires authentication.
             </p>
           </div>
@@ -74,7 +82,7 @@ export default function DashboardLayout({
               window.location.href = "/login";
             }}
             size="lg"
-            className="w-full shadow-lg hover:shadow-xl transition-all"
+            className="w-full shadow-lg hover:shadow-xl transition-all bg-amber-500 text-slate-950 hover:bg-amber-400"
           >
             Sign in
           </Button>

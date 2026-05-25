@@ -1,5 +1,5 @@
 import { trpc } from "@/lib/trpc";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 
 type UseAuthOptions = {
@@ -12,20 +12,35 @@ export function useAuth(options?: UseAuthOptions) {
     options ?? {};
   const [, setLocation] = useLocation();
   const utils = trpc.useUtils();
+  
+  // Track hydration state to prevent mismatch
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
-  const hasToken =
-    typeof window !== "undefined" && Boolean(localStorage.getItem("nl_token"));
+  const hasToken = useMemo(() => {
+    if (typeof window === "undefined" || !isMounted) return false;
+    try {
+      return Boolean(localStorage.getItem("nl_token"));
+    } catch {
+      return false;
+    }
+  }, [isMounted]);
 
   const meQuery = trpc.auth.me.useQuery(undefined, {
     retry: false,
-    refetchOnWindowFocus: false,
-    enabled: hasToken,
+    refetchOnWindowFocus: true,
+    enabled: hasToken && isMounted,
+    staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
   const logout = useCallback(async () => {
-    localStorage.removeItem("nl_token");
-    localStorage.removeItem("worker_info");
-    utils.auth.me.setData(undefined, undefined);
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("nl_token");
+      localStorage.removeItem("worker_info");
+    }
+    utils.auth.me.setData(undefined, null);
     await utils.auth.me.invalidate();
     setLocation("/login");
   }, [utils, setLocation]);
@@ -33,21 +48,25 @@ export function useAuth(options?: UseAuthOptions) {
   const state = useMemo(
     () => ({
       user: meQuery.data ?? null,
-      loading: hasToken && meQuery.isLoading,
+      loading: isMounted ? (hasToken && meQuery.isLoading) : true,
       error: meQuery.error ?? null,
       isAuthenticated: Boolean(meQuery.data),
     }),
-    [meQuery.data, meQuery.error, meQuery.isLoading, hasToken]
+    [meQuery.data, meQuery.error, meQuery.isLoading, hasToken, isMounted]
   );
 
   useEffect(() => {
-    if (!redirectOnUnauthenticated) return;
+    if (!isMounted || !redirectOnUnauthenticated) return;
     if (state.loading) return;
     if (state.isAuthenticated) return;
-    if (typeof window === "undefined") return;
-    if (window.location.pathname === redirectPath) return;
+    
+    const currentPath = window.location.pathname;
+    if (currentPath === redirectPath) return;
+    
+    console.warn(`[Auth] Unauthenticated user on protected route ${currentPath}, redirecting to ${redirectPath}`);
     setLocation(redirectPath);
   }, [
+    isMounted,
     redirectOnUnauthenticated,
     redirectPath,
     state.loading,
