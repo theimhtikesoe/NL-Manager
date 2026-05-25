@@ -9,7 +9,12 @@ export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
       if (!_pool) {
-        _pool = new Pool({ connectionString: process.env.DATABASE_URL });
+        _pool = new Pool({
+          connectionString: process.env.DATABASE_URL,
+          max: 10,
+          idleTimeoutMillis: 30000,
+          connectionTimeoutMillis: 2000,
+        });
       }
       _db = drizzle(_pool, { schema });
     } catch (error) {
