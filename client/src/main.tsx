@@ -14,9 +14,13 @@ const queryClient = new QueryClient({
 });
 
 const redirectToLoginIfUnauthorized = (error: unknown) => {
-  if (!(error instanceof TRPCClientError)) return;
+  if (!(error instanceof TRPCClientError)) {
+    console.error("Non-TRPCClientError:", error);
+    return;
+  }
   if (typeof window === "undefined") return;
-  if (error.message !== UNAUTHED_ERR_MSG) return;
+  if (error.message !== UNAUTHED_ERR_MSG) {
+    console.error("TRPCClientError (not unauthed):\
   if (window.location.pathname === "/login") return;
   localStorage.removeItem("nl_token");
   localStorage.removeItem("worker_info");
@@ -36,10 +40,10 @@ queryClient.getMutationCache().subscribe((event) => {
 });
 
 const trpcClient = trpc.createClient({
+  transformer: superjson,
   links: [
     httpBatchLink({
-      url: "/api/trpc",
-      transformer: superjson,
+      url: `${window.location.origin}/api/trpc`,
       headers() {
         const token = localStorage.getItem("nl_token");
         return token ? { Authorization: `Bearer ${token}` } : {};
