@@ -6,9 +6,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { getDb } from "../db";
 import { TRPCError } from "@trpc/server";
-
-const JWT_SECRET =
-  process.env.JWT_SECRET || "fallback_secret_for_latyar_factory";
+import { ENV } from "../_core/env";
 
 export const authRouter = router({
   login: publicProcedure
@@ -42,10 +40,22 @@ export const authRouter = router({
           });
         }
 
-        const valid = await bcrypt.compare(
-          input.password,
-          worker.passwordHash
-        );
+        console.log(`[Auth] User found: ${worker.username}, attempting password verification`);
+        
+        let valid = false;
+        try {
+          valid = await bcrypt.compare(
+            input.password,
+            worker.passwordHash
+          );
+        } catch (bcryptError) {
+          console.error(`[Auth] Bcrypt comparison error for "${input.username}":`, bcryptError);
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Authentication service error",
+          });
+        }
+
         if (!valid) {
           console.warn(`[Auth] Failed login attempt: invalid password for "${input.username}"`);
           throw new TRPCError({
@@ -54,16 +64,31 @@ export const authRouter = router({
           });
         }
 
-        const token = jwt.sign(
-          {
-            id: worker.id,
-            workerCode: worker.workerCode,
-            name: worker.name,
-            role: worker.role,
-          },
-          JWT_SECRET,
-          { expiresIn: "30d" }
-        );
+        console.log(`[Auth] Password valid for "${input.username}", signing token`);
+
+        if (!ENV.jwtSecret || ENV.jwtSecret === "fallback_secret_for_latyar_factory") {
+          console.warn("[Auth] WARNING: Using fallback JWT_SECRET in production!");
+        }
+
+        let token;
+        try {
+          token = jwt.sign(
+            {
+              id: worker.id,
+              workerCode: worker.workerCode,
+              name: worker.name,
+              role: worker.role,
+            },
+            ENV.jwtSecret,
+            { expiresIn: "30d" }
+          );
+        } catch (jwtError) {
+          console.error(`[Auth] JWT signing error for "${input.username}":`, jwtError);
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Token generation failed",
+          });
+        }
 
         console.info(`[Auth] Successful login for "${input.username}" (role: ${worker.role})`);
         return {

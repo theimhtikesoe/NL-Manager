@@ -1,9 +1,7 @@
 import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
 import type { Request, Response } from "express-serve-static-core";
 import jwt from "jsonwebtoken";
-
-const JWT_SECRET =
-  process.env.JWT_SECRET || "fallback_secret_for_latyar_factory";
+import { ENV } from "./env";
 
 export type AuthUser = {
   id: number;
@@ -27,9 +25,15 @@ export async function createContext(
     const authHeader = opts.req.headers.authorization;
     if (authHeader?.startsWith("Bearer ")) {
       const token = authHeader.split(" ")[1];
-      user = jwt.verify(token, JWT_SECRET) as AuthUser;
+      try {
+        user = jwt.verify(token, ENV.jwtSecret) as AuthUser;
+      } catch (verifyError) {
+        console.error("[Context] Token verification failed:", verifyError instanceof Error ? verifyError.message : "Unknown error");
+        user = null;
+      }
     }
-  } catch {
+  } catch (error) {
+    console.error("[Context] Unexpected error in createContext:", error);
     user = null;
   }
 
