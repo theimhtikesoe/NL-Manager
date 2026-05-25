@@ -22,9 +22,9 @@
 - [x] Ensure mobile compatibility (Safari/Chrome on iPhone).
 
 ### Phase 4: Runtime and Vercel Compatibility
-- [ ] Set Node.js runtime to 20.x in package.json/vercel.json.
-- [ ] Ensure SSR safety for `localStorage` and `window` access.
-- [ ] Fix hydration mismatches and malformed URL issues.
+- [x] Set Node.js runtime to 20.x in package.json/vercel.json.
+- [x] Ensure SSR safety for `localStorage` and `window` access.
+- [x] Fix hydration mismatches and malformed URL issues.
 
 ### Phase 5: Database Verification
 - [ ] Confirm Neon PostgreSQL connection stability.
