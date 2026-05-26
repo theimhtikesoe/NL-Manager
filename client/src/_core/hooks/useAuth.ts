@@ -1,100 +1,69 @@
-import { trpc } from "@/lib/trpc";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useLocation } from "wouter";
+
+export type MockUser = {
+  id: number;
+  username: string;
+  name: string;
+  role: "admin" | "worker";
+};
+
+// ── Mock user definitions ───────────────────────────────
+// These are used to immediately resolve the user on the client
+// without waiting for a server round-trip. The server still
+// validates via the x-mock-user header + DB lookup.
+const MOCK_USERS: Record<string, MockUser> = {
+  admin: { id: 1, username: "admin", name: "System Admin", role: "admin" },
+  worker01: { id: 2, username: "worker01", name: "Ahmad Rizal", role: "worker" },
+  worker02: { id: 3, username: "worker02", name: "Budi Santoso", role: "worker" },
+  worker03: { id: 4, username: "worker03", name: "Citra Dewi", role: "worker" },
+};
 
 type UseAuthOptions = {
   redirectOnUnauthenticated?: boolean;
   redirectPath?: string;
 };
 
-export function useAuth(options?: UseAuthOptions) {
-  const { redirectOnUnauthenticated = false, redirectPath = "/login" } =
-    options ?? {};
-  const [, setLocation] = useLocation();
-  const utils = trpc.useUtils();
-  
-  // Track hydration state to prevent mismatch
+export function useAuth(_options?: UseAuthOptions) {
   const [isMounted, setIsMounted] = useState(false);
+
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
-  const hasToken = useMemo(() => {
-    if (typeof window === "undefined" || !isMounted) return false;
-    try {
-      return Boolean(localStorage.getItem("nl_token"));
-    } catch {
-      return false;
-    }
+  const mockUsername = useMemo(() => {
+    if (typeof window === "undefined" || !isMounted) return null;
+    return localStorage.getItem("nl_mock_user");
   }, [isMounted]);
 
-  const meQuery = trpc.auth.me.useQuery(undefined, {
-    retry: false,
-    refetchOnWindowFocus: true,
-    enabled: hasToken && isMounted,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-  });
+  const user = useMemo(() => {
+    if (!mockUsername) return null;
+    return MOCK_USERS[mockUsername] ?? {
+      id: 100,
+      username: mockUsername,
+      name: mockUsername,
+      role: "worker" as const,
+    };
+  }, [mockUsername]);
 
-  const logout = useCallback(async () => {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("nl_token");
-      localStorage.removeItem("worker_info");
-    }
-    utils.auth.me.setData(undefined, null);
-    await utils.auth.me.invalidate();
-    setLocation("/login");
-  }, [utils, setLocation]);
+  const setMockUser = useCallback((username: string) => {
+    localStorage.setItem("nl_mock_user", username);
+    // Force full reload to re-initialize tRPC client headers
+    window.location.reload();
+  }, []);
 
-  // TODO: Authentication temporarily disabled during workflow development
-  const isAuthDisabled = false; // Enable authentication by default
-
-  const state = useMemo(
-    () => {
-      if (isAuthDisabled && isMounted) {
-        return {
-          user: {
-            id: 0,
-            workerCode: "dev-admin",
-            name: "Admin (Dev Mode)",
-            role: "admin" as const,
-          },
-          loading: false,
-          error: null,
-          isAuthenticated: true,
-        };
-      }
-      return {
-        user: meQuery.data ?? null,
-        loading: isMounted ? (hasToken && meQuery.isLoading) : true,
-        error: meQuery.error ?? null,
-        isAuthenticated: Boolean(meQuery.data),
-      };
-    },
-    [meQuery.data, meQuery.error, meQuery.isLoading, hasToken, isMounted, isAuthDisabled]
-  );
-
-  useEffect(() => {
-    if (!isMounted || !redirectOnUnauthenticated) return;
-    if (state.loading) return;
-    if (state.isAuthenticated) return;
-    
-    const currentPath = window.location.pathname;
-    if (currentPath === redirectPath) return;
-    
-    console.warn(`[Auth] Unauthenticated user on protected route ${currentPath}, redirecting to ${redirectPath}`);
-    setLocation(redirectPath);
-  }, [
-    isMounted,
-    redirectOnUnauthenticated,
-    redirectPath,
-    state.loading,
-    state.isAuthenticated,
-    setLocation,
-  ]);
+  const logout = useCallback(() => {
+    localStorage.removeItem("nl_mock_user");
+    localStorage.removeItem("nl_token");
+    window.location.href = "/";
+  }, []);
 
   return {
-    ...state,
-    refresh: () => meQuery.refetch(),
+    user,
+    loading: !isMounted,
+    error: null,
+    isAuthenticated: Boolean(user),
+    setMockUser,
     logout,
+    refresh: () => {},
   };
 }

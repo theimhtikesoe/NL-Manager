@@ -1,11 +1,14 @@
-import { router, adminProcedure, protectedProcedure, workerProcedure } from "../_core/trpc";
+import { router, publicProcedure, adminProcedure, protectedProcedure, workerProcedure } from "../_core/trpc";
 import { z } from "zod";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql, count, inArray } from "drizzle-orm";
 import {
-  workers,
+  users,
   machines,
   shifts,
-  machineCheckingLogs,
+  schedules,
+  tasks,
+  taskProofs,
+  notifications,
 } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { TRPCError } from "@trpc/server";
@@ -13,7 +16,6 @@ import bcrypt from "bcryptjs";
 import {
   createSignedUploadParams,
   isCloudinaryConfigured,
-  uploadMedia,
 } from "../upload";
 
 function todayDateString() {
@@ -21,87 +23,100 @@ function todayDateString() {
 }
 
 export const factoryRouter = router({
-  // --- Admin: Workers ---
-  getWorkers: adminProcedure.query(async () => {
+  // ─── Stats ──────────────────────────────────────────────
+  getStats: protectedProcedure.query(async () => {
+    const db = await getDb();
+    if (!db) return { totalWorkers: 0, totalMachines: 0, activeTasks: 0, pendingReviews: 0, completedToday: 0, machinesByStatus: {} as Record<string, number> };
+
+    const [workerCount] = await db.select({ c: count() }).from(users).where(eq(users.role, "worker"));
+    const [machineCount] = await db.select({ c: count() }).from(machines);
+    const [activeTaskCount] = await db.select({ c: count() }).from(tasks).where(
+      inArray(tasks.status, ["assigned", "in_progress", "waiting_review"])
+    );
+    const [pendingCount] = await db.select({ c: count() }).from(taskProofs).where(eq(taskProofs.reviewStatus, "pending"));
+
+    const today = todayDateString();
+    const [completedCount] = await db.select({ c: count() }).from(tasks).where(
+      and(eq(tasks.status, "completed"), sql`DATE(${tasks.createdAt}) = ${today}`)
+    );
+
+    const machineStatuses = await db
+      .select({ status: machines.status, c: count() })
+      .from(machines)
+      .groupBy(machines.status);
+
+    const machinesByStatus: Record<string, number> = {};
+    machineStatuses.forEach((s) => { machinesByStatus[s.status] = s.c; });
+
+    return {
+      totalWorkers: workerCount.c,
+      totalMachines: machineCount.c,
+      activeTasks: activeTaskCount.c,
+      pendingReviews: pendingCount.c,
+      completedToday: completedCount.c,
+      machinesByStatus,
+    };
+  }),
+
+  // ─── Workers CRUD ───────────────────────────────────────
+  getWorkers: protectedProcedure.query(async () => {
     const db = await getDb();
     if (!db) return [];
     return db
       .select({
-        id: workers.id,
-        workerCode: workers.workerCode,
-        name: workers.name,
-        username: workers.username,
-        role: workers.role,
+        id: users.id,
+        username: users.username,
+        name: users.name,
+        role: users.role,
+        department: users.department,
+        avatar: users.avatar,
       })
-      .from(workers);
+      .from(users);
   }),
 
   addWorker: adminProcedure
     .input(
       z.object({
-        workerCode: z.string().min(3).regex(/^[A-Z0-9_-]+$/, "Worker code must be uppercase alphanumeric"),
         name: z.string().min(2),
-        username: z.string().min(3).regex(/^[a-z0-9._-]+$/, "Username must be lowercase alphanumeric"),
-        password: z.string().min(6),
+        username: z.string().min(3),
+        password: z.string().min(4),
         role: z.enum(["admin", "worker"]).default("worker"),
+        department: z.string().optional(),
       })
     )
     .mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
 
-      // Check for duplicates
-      const existing = await db
-        .select()
-        .from(workers)
-        .where(
-          sql`${workers.username} = ${input.username} OR ${workers.workerCode} = ${input.workerCode}`
-        )
-        .limit(1);
-
+      const existing = await db.select().from(users).where(eq(users.username, input.username)).limit(1);
       if (existing.length > 0) {
-        const isUsername = existing[0].username === input.username;
-        throw new TRPCError({
-          code: "CONFLICT",
-          message: isUsername 
-            ? "Username already exists" 
-            : "Worker code already exists",
-        });
+        throw new TRPCError({ code: "CONFLICT", message: "Username already exists" });
       }
 
       const passwordHash = await bcrypt.hash(input.password, 10);
+      const [row] = await db
+        .insert(users)
+        .values({
+          name: input.name,
+          username: input.username.toLowerCase(),
+          passwordHash,
+          role: input.role,
+          department: input.department ?? null,
+        })
+        .returning({ id: users.id });
 
-      try {
-        const [row] = await db
-          .insert(workers)
-          .values({
-            workerCode: input.workerCode.toUpperCase(),
-            name: input.name,
-            username: input.username.toLowerCase(),
-            passwordHash,
-            role: input.role,
-          })
-          .returning({ id: workers.id });
-
-        return { id: row.id };
-      } catch (error: any) {
-        console.error("[Factory] addWorker error:", error);
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: error.message || "Failed to create worker",
-        });
-      }
+      return { id: row.id };
     }),
 
   updateWorker: adminProcedure
     .input(
       z.object({
         id: z.number(),
-        workerCode: z.string().optional(),
         name: z.string().optional(),
         username: z.string().optional(),
         password: z.string().min(4).optional(),
         role: z.enum(["admin", "worker"]).optional(),
+        department: z.string().optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -109,15 +124,15 @@ export const factoryRouter = router({
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
 
       const updates: Record<string, unknown> = {};
-      if (input.workerCode) updates.workerCode = input.workerCode;
       if (input.name) updates.name = input.name;
       if (input.username) updates.username = input.username;
       if (input.role) updates.role = input.role;
+      if (input.department !== undefined) updates.department = input.department;
       if (input.password) {
         updates.passwordHash = await bcrypt.hash(input.password, 10);
       }
 
-      await db.update(workers).set(updates).where(eq(workers.id, input.id));
+      await db.update(users).set(updates).where(eq(users.id, input.id));
       return { success: true };
     }),
 
@@ -126,12 +141,12 @@ export const factoryRouter = router({
     .mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
-      await db.delete(workers).where(eq(workers.id, input.id));
+      await db.delete(users).where(eq(users.id, input.id));
       return { success: true };
     }),
 
-  // --- Admin: Machines ---
-  getMachines: adminProcedure.query(async () => {
+  // ─── Machines CRUD ──────────────────────────────────────
+  getMachines: protectedProcedure.query(async () => {
     const db = await getDb();
     if (!db) return [];
     return db.select().from(machines);
@@ -143,6 +158,7 @@ export const factoryRouter = router({
         machineCode: z.string().min(1),
         machineName: z.string().min(1),
         location: z.string().optional(),
+        status: z.enum(["active", "maintenance", "offline"]).optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -155,10 +171,35 @@ export const factoryRouter = router({
           machineCode: input.machineCode,
           machineName: input.machineName,
           location: input.location ?? null,
+          status: input.status ?? "active",
         })
         .returning({ id: machines.id });
 
       return { id: row.id };
+    }),
+
+  updateMachine: adminProcedure
+    .input(
+      z.object({
+        id: z.number(),
+        machineName: z.string().optional(),
+        status: z.enum(["active", "maintenance", "offline"]).optional(),
+        location: z.string().optional(),
+        assignedWorkerId: z.number().nullable().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
+
+      const updates: Record<string, unknown> = {};
+      if (input.machineName) updates.machineName = input.machineName;
+      if (input.status) updates.status = input.status;
+      if (input.location !== undefined) updates.location = input.location;
+      if (input.assignedWorkerId !== undefined) updates.assignedWorkerId = input.assignedWorkerId;
+
+      await db.update(machines).set(updates).where(eq(machines.id, input.id));
+      return { success: true };
     }),
 
   deleteMachine: adminProcedure
@@ -170,121 +211,232 @@ export const factoryRouter = router({
       return { success: true };
     }),
 
-  // --- Admin: Shift assignments ---
-  getShifts: adminProcedure.query(async () => {
+  // ─── Shifts ─────────────────────────────────────────────
+  getShifts: protectedProcedure.query(async () => {
     const db = await getDb();
     if (!db) return [];
-
-    const rows = await db
-      .select({
-        id: shifts.id,
-        workerId: shifts.workerId,
-        machineId: shifts.machineId,
-        assignedDate: shifts.assignedDate,
-        shiftType: shifts.shiftType,
-        workerName: workers.name,
-        machineName: machines.machineName,
-        machineCode: machines.machineCode,
-      })
-      .from(shifts)
-      .leftJoin(workers, eq(shifts.workerId, workers.id))
-      .leftJoin(machines, eq(shifts.machineId, machines.id))
-      .orderBy(desc(shifts.assignedDate));
-
-    return rows;
+    return db.select().from(shifts);
   }),
 
-  assignShift: adminProcedure
+  // ─── Schedules ──────────────────────────────────────────
+  getSchedules: protectedProcedure.query(async () => {
+    const db = await getDb();
+    if (!db) return [];
+    return db
+      .select({
+        id: schedules.id,
+        workerId: schedules.workerId,
+        machineId: schedules.machineId,
+        shiftId: schedules.shiftId,
+        date: schedules.date,
+        status: schedules.status,
+        workerName: users.name,
+        machineName: machines.machineName,
+        shiftName: shifts.name,
+        shiftStart: shifts.startTime,
+        shiftEnd: shifts.endTime,
+        shiftColor: shifts.color,
+      })
+      .from(schedules)
+      .leftJoin(users, eq(schedules.workerId, users.id))
+      .leftJoin(machines, eq(schedules.machineId, machines.id))
+      .leftJoin(shifts, eq(schedules.shiftId, shifts.id))
+      .orderBy(desc(schedules.date));
+  }),
+
+  createSchedule: adminProcedure
     .input(
       z.object({
         workerId: z.number(),
         machineId: z.number(),
-        assignedDate: z.string(),
-        shiftType: z.enum(["DAY", "NIGHT"]).default("DAY"),
+        shiftId: z.number(),
+        date: z.string(),
       })
     )
     .mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
 
-      const [machine] = await db
-        .select()
-        .from(machines)
-        .where(eq(machines.id, input.machineId))
-        .limit(1);
-      if (!machine) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Machine not found" });
-      }
-
       const [row] = await db
-        .insert(shifts)
+        .insert(schedules)
         .values({
           workerId: input.workerId,
           machineId: input.machineId,
-          assignedDate: input.assignedDate,
-          shiftType: input.shiftType,
+          shiftId: input.shiftId,
+          date: input.date,
         })
-        .returning({ id: shifts.id });
+        .returning({ id: schedules.id });
 
       return { id: row.id };
     }),
 
-  deleteShift: adminProcedure
+  deleteSchedule: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
-      await db.delete(shifts).where(eq(shifts.id, input.id));
+      await db.delete(schedules).where(eq(schedules.id, input.id));
       return { success: true };
     }),
 
-  // --- Worker: assigned machines today ---
-  getMyAssignments: workerProcedure.query(async ({ ctx }) => {
+  // ─── Tasks CRUD ─────────────────────────────────────────
+  getTasks: protectedProcedure.query(async () => {
     const db = await getDb();
     if (!db) return [];
-
-    const today = todayDateString();
-    const rows = await db
+    return db
       .select({
-        shiftId: shifts.id,
-        machineId: machines.id,
-        machineCode: machines.machineCode,
+        id: tasks.id,
+        title: tasks.title,
+        description: tasks.description,
+        priority: tasks.priority,
+        status: tasks.status,
+        assignedTo: tasks.assignedTo,
+        machineId: tasks.machineId,
+        dueDate: tasks.dueDate,
+        createdBy: tasks.createdBy,
+        createdAt: tasks.createdAt,
+        assigneeName: users.name,
         machineName: machines.machineName,
-        location: machines.location,
-        shiftType: shifts.shiftType,
-        assignedDate: shifts.assignedDate,
       })
-      .from(shifts)
-      .innerJoin(machines, eq(shifts.machineId, machines.id))
-      .where(
-        and(
-          eq(shifts.workerId, ctx.user.id),
-          eq(shifts.assignedDate, today)
-        )
-      );
-
-    const checked = await db
-      .select({ 
-        machineId: machineCheckingLogs.machineId,
-        status: machineCheckingLogs.status 
-      })
-      .from(machineCheckingLogs)
-      .where(
-        and(
-          eq(machineCheckingLogs.workerId, ctx.user.id),
-          sql`DATE(${machineCheckingLogs.checkedAt}) = ${today}`
-        )
-      );
-
-    const checkedMap = new Map(checked.map((c) => [c.machineId, c.status]));
-
-    return rows.map((r) => ({
-      ...r,
-      checked: checkedMap.has(r.machineId),
-      checkStatus: checkedMap.get(r.machineId) || null,
-    }));
+      .from(tasks)
+      .leftJoin(users, eq(tasks.assignedTo, users.id))
+      .leftJoin(machines, eq(tasks.machineId, machines.id))
+      .orderBy(desc(tasks.createdAt));
   }),
 
+  createTask: adminProcedure
+    .input(
+      z.object({
+        title: z.string().min(1),
+        description: z.string().optional(),
+        priority: z.enum(["low", "medium", "high"]).optional(),
+        assignedTo: z.number().optional(),
+        machineId: z.number().optional(),
+        dueDate: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
+
+      const [row] = await db
+        .insert(tasks)
+        .values({
+          title: input.title,
+          description: input.description ?? null,
+          priority: input.priority ?? "medium",
+          status: input.assignedTo ? "assigned" : "created",
+          assignedTo: input.assignedTo ?? null,
+          machineId: input.machineId ?? null,
+          dueDate: input.dueDate ?? null,
+          createdBy: ctx.user.id,
+        })
+        .returning({ id: tasks.id });
+
+      // If assigned, create a notification
+      if (input.assignedTo) {
+        await db.insert(notifications).values({
+          userId: input.assignedTo,
+          title: "New Task Assigned",
+          message: `You have been assigned: "${input.title}"`,
+        });
+      }
+
+      return { id: row.id };
+    }),
+
+  updateTaskStatus: protectedProcedure
+    .input(
+      z.object({
+        id: z.number(),
+        status: z.enum(["created", "assigned", "in_progress", "waiting_review", "completed", "rejected"]),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
+
+      await db.update(tasks).set({ status: input.status }).where(eq(tasks.id, input.id));
+      return { success: true };
+    }),
+
+  deleteTask: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
+      await db.delete(tasks).where(eq(tasks.id, input.id));
+      return { success: true };
+    }),
+
+  // ─── Worker: Start Task ─────────────────────────────────
+  startTask: workerProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
+
+      const [task] = await db.select().from(tasks).where(eq(tasks.id, input.id)).limit(1);
+      if (!task) throw new TRPCError({ code: "NOT_FOUND", message: "Task not found" });
+      if (task.assignedTo !== ctx.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Task not assigned to you" });
+      }
+      if (task.status !== "assigned" && task.status !== "rejected") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Task cannot be started from current status" });
+      }
+
+      await db.update(tasks).set({ status: "in_progress" }).where(eq(tasks.id, input.id));
+      return { success: true };
+    }),
+
+  // ─── Worker: My tasks ───────────────────────────────────
+  getMyTasks: workerProcedure.query(async ({ ctx }) => {
+    const db = await getDb();
+    if (!db) return [];
+    return db
+      .select({
+        id: tasks.id,
+        title: tasks.title,
+        description: tasks.description,
+        priority: tasks.priority,
+        status: tasks.status,
+        machineId: tasks.machineId,
+        dueDate: tasks.dueDate,
+        createdAt: tasks.createdAt,
+        machineName: machines.machineName,
+      })
+      .from(tasks)
+      .leftJoin(machines, eq(tasks.machineId, machines.id))
+      .where(eq(tasks.assignedTo, ctx.user.id))
+      .orderBy(desc(tasks.createdAt));
+  }),
+
+  // ─── Worker: My schedules ──────────────────────────────
+  getMySchedules: workerProcedure.query(async ({ ctx }) => {
+    const db = await getDb();
+    if (!db) return [];
+    const today = todayDateString();
+    return db
+      .select({
+        id: schedules.id,
+        machineId: schedules.machineId,
+        shiftId: schedules.shiftId,
+        date: schedules.date,
+        status: schedules.status,
+        machineName: machines.machineName,
+        machineCode: machines.machineCode,
+        shiftName: shifts.name,
+        shiftStart: shifts.startTime,
+        shiftEnd: shifts.endTime,
+        shiftColor: shifts.color,
+      })
+      .from(schedules)
+      .leftJoin(machines, eq(schedules.machineId, machines.id))
+      .leftJoin(shifts, eq(schedules.shiftId, shifts.id))
+      .where(and(eq(schedules.workerId, ctx.user.id), eq(schedules.date, today)));
+  }),
+
+  // ─── Upload: Signed params (client uploads directly to Cloudinary) ───
   getUploadSignature: protectedProcedure.mutation(() => {
     if (!isCloudinaryConfigured()) {
       throw new TRPCError({
@@ -295,6 +447,7 @@ export const factoryRouter = router({
     return createSignedUploadParams();
   }),
 
+  // ─── Upload: Server-side for small files (<4MB) ─────────
   uploadProof: protectedProcedure
     .input(
       z.object({
@@ -304,6 +457,8 @@ export const factoryRouter = router({
       })
     )
     .mutation(async ({ input }) => {
+      // Import uploadMedia dynamically to avoid loading cloudinary on every request
+      const { uploadMedia } = await import("../upload");
       try {
         const mediaUrl = await uploadMedia(
           input.dataBase64,
@@ -314,152 +469,146 @@ export const factoryRouter = router({
       } catch (error) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message:
-            error instanceof Error ? error.message : "Upload failed",
+          message: error instanceof Error ? error.message : "Upload failed",
         });
       }
     }),
 
-  submitMachineCheck: workerProcedure
+  // ─── Task Proof: Submit ─────────────────────────────────
+  submitTaskProof: workerProcedure
     .input(
       z.object({
-        shiftId: z.number(),
-        machineId: z.number(),
+        taskId: z.number(),
         mediaUrl: z.string().min(1),
-        notes: z.string().optional(),
+        mediaType: z.enum(["image", "video"]),
+        note: z.string().optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
 
-      const [assignment] = await db
-        .select()
-        .from(shifts)
-        .where(
-          and(
-            eq(shifts.id, input.shiftId),
-            eq(shifts.workerId, ctx.user.id),
-            eq(shifts.machineId, input.machineId)
-          )
-        )
-        .limit(1);
-
-      if (!assignment) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "This machine is not assigned to you",
-        });
+      // Verify task ownership
+      const [task] = await db.select().from(tasks).where(eq(tasks.id, input.taskId)).limit(1);
+      if (!task) throw new TRPCError({ code: "NOT_FOUND", message: "Task not found" });
+      if (task.assignedTo !== ctx.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Task not assigned to you" });
       }
 
-      const [existing] = await db
-        .select()
-        .from(machineCheckingLogs)
-        .where(
-          and(
-            eq(machineCheckingLogs.shiftId, input.shiftId),
-            eq(machineCheckingLogs.workerId, ctx.user.id)
-          )
-        )
-        .limit(1);
-
-      if (existing) {
-        throw new TRPCError({
-          code: "CONFLICT",
-          message: "Already submitted for this shift",
-        });
-      }
-
-      const [log] = await db
-        .insert(machineCheckingLogs)
+      const [proof] = await db
+        .insert(taskProofs)
         .values({
-          shiftId: input.shiftId,
-          workerId: ctx.user.id,
-          machineId: input.machineId,
+          taskId: input.taskId,
+          uploadedBy: ctx.user.id,
           mediaUrl: input.mediaUrl,
-          notes: input.notes ?? null,
-          status: "PENDING",
+          mediaType: input.mediaType,
+          note: input.note ?? null,
+          reviewStatus: "pending",
         })
-        .returning();
+        .returning({ id: taskProofs.id });
 
-      return log;
+      // Update task status to waiting_review
+      await db.update(tasks).set({ status: "waiting_review" }).where(eq(tasks.id, input.taskId));
+
+      // Notify admins
+      const admins = await db.select({ id: users.id }).from(users).where(eq(users.role, "admin"));
+      if (admins.length > 0) {
+        await db.insert(notifications).values(
+          admins.map((a) => ({
+            userId: a.id,
+            title: "Proof Submitted for Review",
+            message: `${ctx.user.name} submitted proof for: "${task.title}"`,
+          }))
+        );
+      }
+
+      return { id: proof.id };
     }),
 
-  getLiveCheckingLogs: adminProcedure.query(async () => {
+  // ─── Task Proof: Admin review ───────────────────────────
+  getTaskProofs: adminProcedure.query(async () => {
     const db = await getDb();
     if (!db) return [];
-
     return db
       .select({
-        id: machineCheckingLogs.id,
-        checkedAt: machineCheckingLogs.checkedAt,
-        mediaUrl: machineCheckingLogs.mediaUrl,
-        notes: machineCheckingLogs.notes,
-        adminComment: machineCheckingLogs.adminComment,
-        status: machineCheckingLogs.status,
-        workerName: workers.name,
-        machineName: machines.machineName,
-        machineCode: machines.machineCode,
+        id: taskProofs.id,
+        taskId: taskProofs.taskId,
+        uploadedBy: taskProofs.uploadedBy,
+        mediaUrl: taskProofs.mediaUrl,
+        mediaType: taskProofs.mediaType,
+        note: taskProofs.note,
+        uploadedAt: taskProofs.uploadedAt,
+        reviewStatus: taskProofs.reviewStatus,
+        reviewedBy: taskProofs.reviewedBy,
+        reviewNote: taskProofs.reviewNote,
+        uploaderName: users.name,
+        taskTitle: tasks.title,
       })
-      .from(machineCheckingLogs)
-      .leftJoin(workers, eq(machineCheckingLogs.workerId, workers.id))
-      .leftJoin(machines, eq(machineCheckingLogs.machineId, machines.id))
-      .orderBy(desc(machineCheckingLogs.checkedAt))
+      .from(taskProofs)
+      .leftJoin(users, eq(taskProofs.uploadedBy, users.id))
+      .leftJoin(tasks, eq(taskProofs.taskId, tasks.id))
+      .orderBy(desc(taskProofs.uploadedAt))
       .limit(100);
   }),
 
-  reviewCheckingLog: adminProcedure
+  reviewTaskProof: adminProcedure
     .input(
       z.object({
         id: z.number(),
-        status: z.enum(["COMPLETED", "REJECTED"]),
-        adminComment: z.string().optional(),
+        reviewStatus: z.enum(["approved", "rejected"]),
+        reviewNote: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
 
+      // Get the proof to find the task
+      const [proof] = await db.select().from(taskProofs).where(eq(taskProofs.id, input.id)).limit(1);
+      if (!proof) throw new TRPCError({ code: "NOT_FOUND", message: "Proof not found" });
+
       await db
-        .update(machineCheckingLogs)
+        .update(taskProofs)
         .set({
-          status: input.status,
-          adminComment: input.adminComment ?? null,
+          reviewStatus: input.reviewStatus,
+          reviewedBy: ctx.user.id,
+          reviewNote: input.reviewNote ?? null,
         })
-        .where(eq(machineCheckingLogs.id, input.id));
+        .where(eq(taskProofs.id, input.id));
+
+      // Update task status based on review result
+      const newTaskStatus = input.reviewStatus === "approved" ? "completed" : "rejected";
+      await db.update(tasks).set({ status: newTaskStatus }).where(eq(tasks.id, proof.taskId));
+
+      // Notify the worker
+      const statusLabel = input.reviewStatus === "approved" ? "approved ✓" : "rejected ✗";
+      await db.insert(notifications).values({
+        userId: proof.uploadedBy,
+        title: `Task ${statusLabel}`,
+        message: input.reviewNote || `Your task proof has been ${statusLabel}.`,
+      });
 
       return { success: true };
     }),
 
-  getMachineStatusGrid: adminProcedure.query(async () => {
+  // ─── Notifications ──────────────────────────────────────
+  getNotifications: protectedProcedure.query(async ({ ctx }) => {
     const db = await getDb();
     if (!db) return [];
-
-    const today = todayDateString();
-    const allMachines = await db.select().from(machines);
-
-    const todayLogs = await db
-      .select({
-        machineId: machineCheckingLogs.machineId,
-        checkedAt: machineCheckingLogs.checkedAt,
-        status: machineCheckingLogs.status,
-      })
-      .from(machineCheckingLogs)
-      .where(sql`DATE(${machineCheckingLogs.checkedAt}) = ${today}`);
-
-    const checkedMap = new Map<number, { checkedAt: Date; status: string }>();
-    for (const log of todayLogs) {
-      const prev = checkedMap.get(log.machineId);
-      if (!prev || log.checkedAt > prev.checkedAt) {
-        checkedMap.set(log.machineId, { checkedAt: log.checkedAt, status: log.status });
-      }
-    }
-
-    return allMachines.map((m) => ({
-      ...m,
-      checkedToday: checkedMap.has(m.id),
-      lastCheckedAt: checkedMap.get(m.id)?.checkedAt ?? null,
-      lastStatus: checkedMap.get(m.id)?.status ?? null,
-    }));
+    return db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.userId, ctx.user.id))
+      .orderBy(desc(notifications.createdAt))
+      .limit(50);
   }),
+
+  markNotificationRead: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
+      await db.update(notifications).set({ readStatus: true }).where(eq(notifications.id, input.id));
+      return { success: true };
+    }),
 });

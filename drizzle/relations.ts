@@ -1,6 +1,2 @@
-export {
-  machinesRelations,
-  workersRelations,
-  shiftsRelations,
-  machineCheckingLogsRelations,
-} from "./schema";
+// Relations are defined inline in schema.ts
+export {};

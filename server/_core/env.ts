@@ -22,11 +22,12 @@ export const ENV = {
   databaseUrl: process.env.DATABASE_URL ?? "",
   jwtSecret: process.env.JWT_SECRET ?? "",
   cloudinaryUrl: process.env.CLOUDINARY_URL ?? "",
+  cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME ?? "",
   cloudinaryApiKey: process.env.CLOUDINARY_API_KEY ?? "",
   cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET ?? "",
   nodeEnv: process.env.NODE_ENV || "development",
   isProduction: process.env.NODE_ENV === "production",
-  isDevelopment: process.env.NODE_ENV === "development",
-  authDisabled: process.env.AUTH_DISABLED === "true", // Only disable if explicitly requested
+  isDevelopment: process.env.NODE_ENV !== "production",
+  authDisabled: process.env.AUTH_DISABLED === "true",
   port: parseInt(process.env.PORT || "3000", 10),
 };

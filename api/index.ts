@@ -7,8 +7,14 @@ import { serveStatic } from "../server/_core/vite";
 
 const app = express();
 
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ limit: "50mb", extended: true }));
+// Vercel serverless: 4.5MB body limit
+app.use(express.json({ limit: "4.5mb" }));
+app.use(express.urlencoded({ limit: "4.5mb", extended: true }));
+
+// Health Check
+app.get("/api/health", (_req, res) => {
+  res.status(200).json({ ok: true });
+});
 
 app.use(
   "/api/trpc",
@@ -16,7 +22,7 @@ app.use(
     router: appRouter,
     createContext,
     onError({ path, error }) {
-      console.error(`[tRPC Error] at "${path}":`, error);
+      console.error(`[tRPC Error] at "${path}":`, error.message);
     },
   })
 );

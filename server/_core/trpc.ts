@@ -26,8 +26,10 @@ export const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
   return next({ ctx });
 });
 
+// Worker procedure — allows both worker and admin roles
+// (admin needs to test worker flows in demo mode)
 export const workerProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (ctx.user.role !== "worker") {
+  if (ctx.user.role !== "worker" && ctx.user.role !== "admin") {
     throw new TRPCError({
       code: "FORBIDDEN",
       message: "Worker access only",

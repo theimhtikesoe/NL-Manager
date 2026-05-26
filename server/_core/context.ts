@@ -1,11 +1,14 @@
 import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
 import type { Request, Response } from "express-serve-static-core";
 import jwt from "jsonwebtoken";
+import { eq } from "drizzle-orm";
 import { ENV } from "./env";
+import { getDb } from "../db";
+import { users } from "../../drizzle/schema";
 
 export type AuthUser = {
   id: number;
-  workerCode: string;
+  username: string;
   name: string;
   role: "admin" | "worker";
 };
@@ -21,21 +24,48 @@ export async function createContext(
 ): Promise<TrpcContext> {
   let user: AuthUser | null = null;
 
-  // Development Auth Bypass: Inject mock admin user if AUTH_DISABLED is true
-  if (ENV.authDisabled) {
+  // ── Mock Auth (Development Mode) ──────────────────────
+  // Check for x-mock-user header — this enables direct route-based
+  // role simulation without login. The header value is a username
+  // that we look up in the database.
+  const mockUsername = opts.req.headers["x-mock-user"] as string | undefined;
+  if (mockUsername) {
+    try {
+      const db = await getDb();
+      if (db) {
+        const [dbUser] = await db
+          .select({
+            id: users.id,
+            username: users.username,
+            name: users.name,
+            role: users.role,
+          })
+          .from(users)
+          .where(eq(users.username, mockUsername))
+          .limit(1);
+
+        if (dbUser) {
+          user = dbUser;
+          return { req: opts.req, res: opts.res, user };
+        }
+      }
+    } catch (error) {
+      console.error("[Context] Mock user lookup failed:", error);
+    }
+
+    // Fallback: if DB lookup fails, create a synthetic mock user
+    // based on header value
+    const isAdmin = mockUsername === "admin";
     user = {
-      id: 0,
-      workerCode: "dev-admin",
-      name: "Admin (Dev Mode)",
-      role: "admin",
+      id: isAdmin ? 1 : 100,
+      username: mockUsername,
+      name: isAdmin ? "System Admin" : mockUsername,
+      role: isAdmin ? "admin" : "worker",
     };
-    return {
-      req: opts.req,
-      res: opts.res,
-      user,
-    };
+    return { req: opts.req, res: opts.res, user };
   }
 
+  // ── Standard JWT Auth ─────────────────────────────────
   try {
     const authHeader = opts.req.headers.authorization;
     if (authHeader?.startsWith("Bearer ")) {
@@ -43,7 +73,10 @@ export async function createContext(
       try {
         user = jwt.verify(token, ENV.jwtSecret) as AuthUser;
       } catch (verifyError) {
-        console.error("[Context] Token verification failed:", verifyError instanceof Error ? verifyError.message : "Unknown error");
+        console.error(
+          "[Context] Token verification failed:",
+          verifyError instanceof Error ? verifyError.message : "Unknown error"
+        );
         user = null;
       }
     }

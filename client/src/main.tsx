@@ -1,5 +1,4 @@
 import { trpc } from "@/lib/trpc";
-import { UNAUTHED_ERR_MSG } from "@shared/const";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink, TRPCClientError } from "@trpc/client";
 import { createRoot } from "react-dom/client";
@@ -9,8 +8,8 @@ import "./index.css";
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { 
-      staleTime: 10_000, 
+    queries: {
+      staleTime: 10_000,
       retry: (failureCount, error) => {
         if (error instanceof TRPCClientError && error.data?.code === "UNAUTHORIZED") return false;
         return failureCount < 2;
@@ -25,40 +24,6 @@ const getBaseUrl = () => {
   return `http://localhost:${process.env.PORT ?? 3000}`;
 };
 
-const redirectToLoginIfUnauthorized = (error: unknown) => {
-  if (!(error instanceof TRPCClientError)) return;
-  if (typeof window === "undefined") return;
-  
-  // Production-safe transport error logging
-  if (error.message === "Failed to fetch" || error.message.toLowerCase().includes("network")) {
-    console.error("[tRPC Transport Error]: Connection failed. Verify API endpoint and network status.", {
-      message: error.message,
-      url: getBaseUrl(),
-      timestamp: new Date().toISOString()
-    });
-  }
-
-  if (error.message !== UNAUTHED_ERR_MSG) return;
-  if (window.location.pathname === "/login") return;
-
-  console.warn("[Auth] Unauthorized access detected, clearing session and redirecting...");
-  localStorage.removeItem("nl_token");
-  localStorage.removeItem("worker_info");
-  window.location.href = "/login";
-};
-
-queryClient.getQueryCache().subscribe((event) => {
-  if (event.type === "updated" && event.action.type === "error") {
-    redirectToLoginIfUnauthorized(event.query.state.error);
-  }
-});
-
-queryClient.getMutationCache().subscribe((event) => {
-  if (event.type === "updated" && event.action.type === "error") {
-    redirectToLoginIfUnauthorized(event.mutation.state.error);
-  }
-});
-
 const trpcClient = trpc.createClient({
   transformer: superjson,
   links: [
@@ -66,8 +31,24 @@ const trpcClient = trpc.createClient({
       url: `${getBaseUrl()}/api/trpc`,
       headers() {
         if (typeof window === "undefined") return {};
+        const headers: Record<string, string> = {};
+
+        // ── Mock user header for development mode ───────
+        // The active mock user is stored in localStorage.
+        // This header is read by the server context to resolve
+        // the user without JWT authentication.
+        const mockUser = localStorage.getItem("nl_mock_user");
+        if (mockUser) {
+          headers["x-mock-user"] = mockUser;
+        }
+
+        // ── Standard JWT auth (for when auth is re-enabled) ─
         const token = localStorage.getItem("nl_token");
-        return token ? { Authorization: `Bearer ${token}` } : {};
+        if (token) {
+          headers["Authorization"] = `Bearer ${token}`;
+        }
+
+        return headers;
       },
     }),
   ],
