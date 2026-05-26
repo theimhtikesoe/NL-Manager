@@ -1,7 +1,7 @@
 import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
-import { workers } from "../../drizzle/schema";
+import { users } from "../../drizzle/schema";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { getDb } from "../db";
@@ -27,13 +27,13 @@ export const authRouter = router({
           });
         }
 
-        const [worker] = await db
+        const [user] = await db
           .select()
-          .from(workers)
-          .where(eq(workers.username, input.username))
+          .from(users)
+          .where(eq(users.username, input.username))
           .limit(1);
 
-        if (!worker) {
+        if (!user) {
           console.warn(`[Auth] Failed login attempt: user not found "${input.username}"`);
           throw new TRPCError({
             code: "UNAUTHORIZED",
@@ -45,7 +45,7 @@ export const authRouter = router({
         try {
           valid = await bcrypt.compare(
             input.password,
-            worker.passwordHash
+            user.passwordHash
           );
         } catch (bcryptError) {
           console.error(`[Auth] Bcrypt comparison error for "${input.username}":`, bcryptError);
@@ -75,10 +75,10 @@ export const authRouter = router({
         try {
           token = jwt.sign(
             {
-              id: worker.id,
-              workerCode: worker.workerCode,
-              name: worker.name,
-              role: worker.role,
+              id: user.id,
+              username: user.username,
+              name: user.name,
+              role: user.role,
             },
             ENV.jwtSecret,
             { expiresIn: "30d" }
@@ -91,14 +91,14 @@ export const authRouter = router({
           });
         }
 
-        console.info(`[Auth] Successful login for "${input.username}" (role: ${worker.role})`);
+        console.info(`[Auth] Successful login for "${input.username}" (role: ${user.role})`);
         return {
           token,
           worker: {
-            id: worker.id,
-            name: worker.name,
-            workerCode: worker.workerCode,
-            role: worker.role,
+            id: user.id,
+            name: user.name,
+            username: user.username,
+            role: user.role,
           },
         };
       } catch (error) {
