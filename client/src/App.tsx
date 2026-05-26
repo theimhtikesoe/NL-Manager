@@ -24,8 +24,8 @@ function PageLoader() {
   );
 }
 
-// ── Route wrapper: sets mock user from URL path ─────────
-function MockUserRoute({
+// ── Route wrapper: simplified for no-auth ───────────────
+function DirectRoute({
   username,
   component: Component,
 }: {
@@ -33,21 +33,16 @@ function MockUserRoute({
   component: React.LazyExoticComponent<React.ComponentType<{ user: any }>>;
 }) {
   const { user, setMockUser } = useAuth();
-  const [ready, setReady] = useState(false);
-
+  
   useEffect(() => {
     const current = localStorage.getItem("nl_mock_user");
     if (current !== username) {
       localStorage.setItem("nl_mock_user", username);
-      // Trigger a soft re-render by setting ready after a tick
-      // The tRPC headers will pick up the new user on next request
       window.location.reload();
-      return;
     }
-    setReady(true);
-  }, [username, setMockUser]);
+  }, [username]);
 
-  if (!ready || !user) {
+  if (!user) {
     return <PageLoader />;
   }
 
@@ -60,23 +55,15 @@ function MockUserRoute({
 
 // ── Home redirect ───────────────────────────────────────
 function Home() {
-  const { user } = useAuth();
   const [, setLocation] = useLocation();
 
   useEffect(() => {
-    const mockUser = localStorage.getItem("nl_mock_user");
-    if (!mockUser) {
-      // Default to admin for first-time visitors
+    const mockUser = localStorage.getItem("nl_mock_user") || "admin";
+    if (!localStorage.getItem("nl_mock_user")) {
       localStorage.setItem("nl_mock_user", "admin");
-      setLocation("/admin");
-      return;
     }
-    if (mockUser === "admin") {
-      setLocation("/admin");
-    } else {
-      setLocation(`/${mockUser}`);
-    }
-  }, [user, setLocation]);
+    setLocation(mockUser === "admin" ? "/admin" : `/${mockUser}`);
+  }, [setLocation]);
 
   return <PageLoader />;
 }
@@ -148,16 +135,16 @@ function Router() {
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/admin">
-        <MockUserRoute username="admin" component={AdminDashboard} />
+        <DirectRoute username="admin" component={AdminDashboard} />
       </Route>
       <Route path="/worker01">
-        <MockUserRoute username="worker01" component={WorkerWorkspace} />
+        <DirectRoute username="worker01" component={WorkerWorkspace} />
       </Route>
       <Route path="/worker02">
-        <MockUserRoute username="worker02" component={WorkerWorkspace} />
+        <DirectRoute username="worker02" component={WorkerWorkspace} />
       </Route>
       <Route path="/worker03">
-        <MockUserRoute username="worker03" component={WorkerWorkspace} />
+        <DirectRoute username="worker03" component={WorkerWorkspace} />
       </Route>
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />

@@ -218,6 +218,117 @@ export const factoryRouter = router({
     return db.select().from(shifts);
   }),
 
+  assignShift: adminProcedure
+    .input(
+      z.object({
+        workerId: z.number(),
+        machineId: z.number(),
+        date: z.string(),
+        shiftType: z.enum(["DAY", "NIGHT"]),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
+
+      // Check if a shift with name DAY/NIGHT exists, if not create or map to existing shift IDs
+      // For simplicity in this industrial demo, we'll map them to shift records
+      let [shift] = await db.select().from(shifts).where(eq(shifts.name, input.shiftType)).limit(1);
+      
+      if (!shift) {
+        const [newShift] = await db.insert(shifts).values({
+          name: input.shiftType,
+          startTime: input.shiftType === "DAY" ? "08:00" : "20:00",
+          endTime: input.shiftType === "DAY" ? "20:00" : "08:00",
+          color: input.shiftType === "DAY" ? "#f97316" : "#6366f1",
+        }).returning();
+        shift = newShift;
+      }
+
+      const [row] = await db
+        .insert(schedules)
+        .values({
+          workerId: input.workerId,
+          machineId: input.machineId,
+          shiftId: shift.id,
+          date: input.date,
+        })
+        .returning({ id: schedules.id });
+
+      return { id: row.id };
+    }),
+
+  deleteShift: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
+      await db.delete(schedules).where(eq(schedules.id, input.id));
+      return { success: true };
+    }),
+
+  // ─── Machine Status Grid ────────────────────────────────
+  getMachineStatusGrid: protectedProcedure.query(async () => {
+    const db = await getDb();
+    if (!db) return [];
+    return db.select({
+      id: machines.id,
+      machineCode: machines.machineCode,
+      machineName: machines.machineName,
+      status: machines.status,
+    }).from(machines);
+  }),
+
+  // ─── Live Checking Logs ─────────────────────────────────
+  getLiveCheckingLogs: protectedProcedure.query(async () => {
+    const db = await getDb();
+    if (!db) return [];
+    return db
+      .select({
+        id: taskProofs.id,
+        taskId: taskProofs.taskId,
+        workerName: users.name,
+        machineName: machines.machineName,
+        mediaUrl: taskProofs.mediaUrl,
+        mediaType: taskProofs.mediaType,
+        note: taskProofs.note,
+        status: taskProofs.reviewStatus,
+        uploadedAt: sql<string>`TO_CHAR(${taskProofs.uploadedAt}, 'HH24:MI')`,
+      })
+      .from(taskProofs)
+      .leftJoin(users, eq(taskProofs.uploadedBy, users.id))
+      .leftJoin(tasks, eq(taskProofs.taskId, tasks.id))
+      .leftJoin(machines, eq(tasks.machineId, machines.id))
+      .orderBy(desc(taskProofs.uploadedAt))
+      .limit(20);
+  }),
+
+  reviewCheckingLog: adminProcedure
+    .input(
+      z.object({
+        id: z.number(),
+        status: z.enum(["approved", "rejected", "pending"]).transform(v => v === "approved" ? "approved" : v as "pending" | "approved" | "rejected"),
+        adminComment: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
+
+      // Map "approved" to "approved" (though schema uses "approved")
+      const statusValue = input.status === "approved" ? "approved" : input.status;
+
+      await db.update(taskProofs)
+        .set({
+          reviewStatus: statusValue as any,
+          reviewedBy: ctx.user.id,
+          reviewNote: input.adminComment ?? null,
+        })
+        .where(eq(taskProofs.id, input.id));
+
+      return { success: true };
+    }),
+
   // ─── Schedules ──────────────────────────────────────────
   getSchedules: protectedProcedure.query(async () => {
     const db = await getDb();
@@ -410,205 +521,4 @@ export const factoryRouter = router({
       .where(eq(tasks.assignedTo, ctx.user.id))
       .orderBy(desc(tasks.createdAt));
   }),
-
-  // ─── Worker: My schedules ──────────────────────────────
-  getMySchedules: workerProcedure.query(async ({ ctx }) => {
-    const db = await getDb();
-    if (!db) return [];
-    const today = todayDateString();
-    return db
-      .select({
-        id: schedules.id,
-        machineId: schedules.machineId,
-        shiftId: schedules.shiftId,
-        date: schedules.date,
-        status: schedules.status,
-        machineName: machines.machineName,
-        machineCode: machines.machineCode,
-        shiftName: shifts.name,
-        shiftStart: shifts.startTime,
-        shiftEnd: shifts.endTime,
-        shiftColor: shifts.color,
-      })
-      .from(schedules)
-      .leftJoin(machines, eq(schedules.machineId, machines.id))
-      .leftJoin(shifts, eq(schedules.shiftId, shifts.id))
-      .where(and(eq(schedules.workerId, ctx.user.id), eq(schedules.date, today)));
-  }),
-
-  // ─── Upload: Signed params (client uploads directly to Cloudinary) ───
-  getUploadSignature: protectedProcedure.mutation(() => {
-    if (!isCloudinaryConfigured()) {
-      throw new TRPCError({
-        code: "INTERNAL_SERVER_ERROR",
-        message: "Cloudinary is not configured",
-      });
-    }
-    return createSignedUploadParams();
-  }),
-
-  // ─── Upload: Server-side for small files (<4MB) ─────────
-  uploadProof: protectedProcedure
-    .input(
-      z.object({
-        dataBase64: z.string().min(1),
-        contentType: z.string().min(1),
-        fileName: z.string().min(1),
-      })
-    )
-    .mutation(async ({ input }) => {
-      // Import uploadMedia dynamically to avoid loading cloudinary on every request
-      const { uploadMedia } = await import("../upload");
-      try {
-        const mediaUrl = await uploadMedia(
-          input.dataBase64,
-          input.contentType,
-          input.fileName
-        );
-        return { mediaUrl };
-      } catch (error) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: error instanceof Error ? error.message : "Upload failed",
-        });
-      }
-    }),
-
-  // ─── Task Proof: Submit ─────────────────────────────────
-  submitTaskProof: workerProcedure
-    .input(
-      z.object({
-        taskId: z.number(),
-        mediaUrl: z.string().min(1),
-        mediaType: z.enum(["image", "video"]),
-        note: z.string().optional(),
-      })
-    )
-    .mutation(async ({ input, ctx }) => {
-      const db = await getDb();
-      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
-
-      // Verify task ownership
-      const [task] = await db.select().from(tasks).where(eq(tasks.id, input.taskId)).limit(1);
-      if (!task) throw new TRPCError({ code: "NOT_FOUND", message: "Task not found" });
-      if (task.assignedTo !== ctx.user.id) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Task not assigned to you" });
-      }
-
-      const [proof] = await db
-        .insert(taskProofs)
-        .values({
-          taskId: input.taskId,
-          uploadedBy: ctx.user.id,
-          mediaUrl: input.mediaUrl,
-          mediaType: input.mediaType,
-          note: input.note ?? null,
-          reviewStatus: "pending",
-        })
-        .returning({ id: taskProofs.id });
-
-      // Update task status to waiting_review
-      await db.update(tasks).set({ status: "waiting_review" }).where(eq(tasks.id, input.taskId));
-
-      // Notify admins
-      const admins = await db.select({ id: users.id }).from(users).where(eq(users.role, "admin"));
-      if (admins.length > 0) {
-        await db.insert(notifications).values(
-          admins.map((a) => ({
-            userId: a.id,
-            title: "Proof Submitted for Review",
-            message: `${ctx.user.name} submitted proof for: "${task.title}"`,
-          }))
-        );
-      }
-
-      return { id: proof.id };
-    }),
-
-  // ─── Task Proof: Admin review ───────────────────────────
-  getTaskProofs: adminProcedure.query(async () => {
-    const db = await getDb();
-    if (!db) return [];
-    return db
-      .select({
-        id: taskProofs.id,
-        taskId: taskProofs.taskId,
-        uploadedBy: taskProofs.uploadedBy,
-        mediaUrl: taskProofs.mediaUrl,
-        mediaType: taskProofs.mediaType,
-        note: taskProofs.note,
-        uploadedAt: taskProofs.uploadedAt,
-        reviewStatus: taskProofs.reviewStatus,
-        reviewedBy: taskProofs.reviewedBy,
-        reviewNote: taskProofs.reviewNote,
-        uploaderName: users.name,
-        taskTitle: tasks.title,
-      })
-      .from(taskProofs)
-      .leftJoin(users, eq(taskProofs.uploadedBy, users.id))
-      .leftJoin(tasks, eq(taskProofs.taskId, tasks.id))
-      .orderBy(desc(taskProofs.uploadedAt))
-      .limit(100);
-  }),
-
-  reviewTaskProof: adminProcedure
-    .input(
-      z.object({
-        id: z.number(),
-        reviewStatus: z.enum(["approved", "rejected"]),
-        reviewNote: z.string().optional(),
-      })
-    )
-    .mutation(async ({ input, ctx }) => {
-      const db = await getDb();
-      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
-
-      // Get the proof to find the task
-      const [proof] = await db.select().from(taskProofs).where(eq(taskProofs.id, input.id)).limit(1);
-      if (!proof) throw new TRPCError({ code: "NOT_FOUND", message: "Proof not found" });
-
-      await db
-        .update(taskProofs)
-        .set({
-          reviewStatus: input.reviewStatus,
-          reviewedBy: ctx.user.id,
-          reviewNote: input.reviewNote ?? null,
-        })
-        .where(eq(taskProofs.id, input.id));
-
-      // Update task status based on review result
-      const newTaskStatus = input.reviewStatus === "approved" ? "completed" : "rejected";
-      await db.update(tasks).set({ status: newTaskStatus }).where(eq(tasks.id, proof.taskId));
-
-      // Notify the worker
-      const statusLabel = input.reviewStatus === "approved" ? "approved ✓" : "rejected ✗";
-      await db.insert(notifications).values({
-        userId: proof.uploadedBy,
-        title: `Task ${statusLabel}`,
-        message: input.reviewNote || `Your task proof has been ${statusLabel}.`,
-      });
-
-      return { success: true };
-    }),
-
-  // ─── Notifications ──────────────────────────────────────
-  getNotifications: protectedProcedure.query(async ({ ctx }) => {
-    const db = await getDb();
-    if (!db) return [];
-    return db
-      .select()
-      .from(notifications)
-      .where(eq(notifications.userId, ctx.user.id))
-      .orderBy(desc(notifications.createdAt))
-      .limit(50);
-  }),
-
-  markNotificationRead: protectedProcedure
-    .input(z.object({ id: z.number() }))
-    .mutation(async ({ input }) => {
-      const db = await getDb();
-      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
-      await db.update(notifications).set({ readStatus: true }).where(eq(notifications.id, input.id));
-      return { success: true };
-    }),
 });
