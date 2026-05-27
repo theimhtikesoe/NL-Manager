@@ -1,55 +1,39 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-export type MockUser = {
+export type AuthUser = {
   id: number;
   username: string;
   name: string;
   role: "admin" | "worker";
 };
 
-const MOCK_USERS: Record<string, MockUser> = {
-  admin: { id: 1, username: "admin", name: "System Admin", role: "admin" },
-  worker01: { id: 2, username: "worker01", name: "Ahmad Rizal", role: "worker" },
-  worker02: { id: 3, username: "worker02", name: "Budi Santoso", role: "worker" },
-  worker03: { id: 4, username: "worker03", name: "Citra Dewi", role: "worker" },
-};
-
-type UseAuthOptions = {
-  redirectOnUnauthenticated?: boolean;
-  redirectPath?: string;
-};
-
-export function useAuth(_options?: UseAuthOptions) {
+export function useAuth() {
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
-  const mockUsername = useMemo(() => {
+  const user = useMemo(() => {
     if (typeof window === "undefined" || !isMounted) return null;
-    return localStorage.getItem("nl_mock_user");
+    
+    // Read the real user session from localStorage
+    const storedUser = localStorage.getItem("nl_user");
+    if (storedUser) {
+      try {
+        return JSON.parse(storedUser) as AuthUser;
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
   }, [isMounted]);
 
-  const user = useMemo(() => {
-    if (!mockUsername) return null;
-    return MOCK_USERS[mockUsername] ?? {
-      id: 100,
-      username: mockUsername,
-      name: mockUsername,
-      role: "worker" as const,
-    };
-  }, [mockUsername]);
-
-  const setMockUser = useCallback((username: string) => {
-    localStorage.setItem("nl_mock_user", username);
-    window.location.reload();
-  }, []);
-
   const logout = useCallback(() => {
-    localStorage.removeItem("nl_mock_user");
+    localStorage.removeItem("nl_user");
     localStorage.removeItem("nl_token");
-    window.location.href = "/";
+    localStorage.removeItem("nl_mock_user"); // Legacy cleanup
+    window.location.href = "/login";
   }, []);
 
   return {
@@ -57,8 +41,6 @@ export function useAuth(_options?: UseAuthOptions) {
     loading: !isMounted,
     error: null,
     isAuthenticated: Boolean(user),
-    setMockUser,
     logout,
-    refresh: () => {},
   };
 }

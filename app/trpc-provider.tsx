@@ -31,10 +31,6 @@ export function TRPCProvider({ children }: { children: React.ReactNode }) {
           headers() {
             if (typeof window === "undefined") return {};
             const headers: Record<string, string> = {};
-            const mockUser = localStorage.getItem("nl_mock_user");
-            if (mockUser) {
-              headers["x-mock-user"] = mockUser;
-            }
             const token = localStorage.getItem("nl_token");
             if (token) {
               headers["Authorization"] = `Bearer ${token}`;

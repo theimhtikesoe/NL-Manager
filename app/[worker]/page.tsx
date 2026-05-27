@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, use } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "../../client/src/_core/hooks/useAuth";
 import WorkerWorkspace from "../../client/src/pages/WorkerWorkspace";
 import { Loader2 } from "lucide-react";
@@ -9,21 +10,32 @@ export default function WorkerPage({ params }: { params: Promise<{ worker: strin
   const resolvedParams = use(params);
   const workerUsername = resolvedParams.worker;
 
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+  const router = useRouter();
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    // Synchronize localStorage session to match the dynamic route parameter
-    const current = localStorage.getItem("nl_mock_user");
-    if (current !== workerUsername) {
-      localStorage.setItem("nl_mock_user", workerUsername);
-      window.location.reload();
+    if (loading) return;
+
+    if (!user) {
+      router.replace("/login");
       return;
     }
-    setReady(true);
-  }, [workerUsername]);
 
-  if (workerUsername === "admin") {
+    if (user.role === "admin") {
+      router.replace("/admin");
+      return;
+    }
+
+    if (user.username !== workerUsername) {
+      router.replace(`/${user.username}`);
+      return;
+    }
+
+    setReady(true);
+  }, [loading, user, workerUsername, router]);
+
+  if (workerUsername === "admin" || workerUsername === "login") {
     return null;
   }
 

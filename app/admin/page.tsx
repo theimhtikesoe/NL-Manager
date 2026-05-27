@@ -1,23 +1,31 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "../../client/src/_core/hooks/useAuth";
 import AdminDashboard from "../../client/src/pages/AdminDashboard";
 import { Loader2 } from "lucide-react";
 
 export default function AdminPage() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+  const router = useRouter();
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const current = localStorage.getItem("nl_mock_user");
-    if (current !== "admin") {
-      localStorage.setItem("nl_mock_user", "admin");
-      window.location.reload();
+    if (loading) return;
+    
+    if (!user) {
+      router.replace("/login");
       return;
     }
+    
+    if (user.role !== "admin") {
+      router.replace(`/${user.username}`);
+      return;
+    }
+    
     setReady(true);
-  }, []);
+  }, [user, loading, router]);
 
   if (!ready || !user) {
     return (

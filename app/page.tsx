@@ -8,16 +8,20 @@ export default function HomePage() {
   const router = useRouter();
 
   useEffect(() => {
-    const mockUser = localStorage.getItem("nl_mock_user");
-    if (!mockUser) {
-      localStorage.setItem("nl_mock_user", "admin");
-      router.replace("/admin");
+    const userJson = localStorage.getItem("nl_user");
+    if (!userJson) {
+      router.replace("/login");
       return;
     }
-    if (mockUser === "admin") {
-      router.replace("/admin");
-    } else {
-      router.replace(`/${mockUser}`);
+    try {
+      const user = JSON.parse(userJson);
+      if (user.role === "admin") {
+        router.replace("/admin");
+      } else {
+        router.replace(`/${user.username}`);
+      }
+    } catch (e) {
+      router.replace("/login");
     }
   }, [router]);
 

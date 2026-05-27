@@ -24,34 +24,7 @@ export async function createContext(
 ): Promise<TrpcContext> {
   let user: AuthUser | null = null;
 
-  // Mock Auth via x-mock-user header
-  const mockUsername = opts.req.headers["x-mock-user"] as string | undefined;
-  if (mockUsername) {
-    try {
-      const db = await getDb();
-      if (db) {
-        const [dbUser] = await db
-          .select({ id: users.id, username: users.username, name: users.name, role: users.role })
-          .from(users)
-          .where(eq(users.username, mockUsername))
-          .limit(1);
-        if (dbUser) {
-          user = dbUser;
-          return { req: opts.req, res: opts.res, user };
-        }
-      }
-    } catch (error) {
-      console.error("[Context] Mock user lookup failed:", error);
-    }
-    const isAdmin = mockUsername === "admin";
-    user = {
-      id: isAdmin ? 1 : 100,
-      username: mockUsername,
-      name: isAdmin ? "System Admin" : mockUsername,
-      role: isAdmin ? "admin" : "worker",
-    };
-    return { req: opts.req, res: opts.res, user };
-  }
+
 
   // Standard JWT Auth
   try {
