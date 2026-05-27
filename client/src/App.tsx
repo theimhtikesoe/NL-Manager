@@ -161,7 +161,6 @@ function App() {
         <TooltipProvider>
           <Toaster theme="dark" position="top-right" toastOptions={{ style: { background: "rgb(24 24 27)", border: "1px solid rgb(39 39 42)", color: "rgb(228 228 231)" } }} />
           <Router />
-          <DevRoleSwitcher />
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>

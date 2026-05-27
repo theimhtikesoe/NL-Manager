@@ -1,7 +1,7 @@
 import express from "express";
 import type { Express } from "express-serve-static-core";
-import fs from "fs";
-import path from "path";
+import * as fs from "fs";
+import * as path from "path";
 
 export function serveStatic(app: Express) {
   // In Vercel, static files are served from the output directory directly

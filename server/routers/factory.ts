@@ -4,7 +4,7 @@ import { and, desc, eq, sql, count, inArray } from "drizzle-orm";
 import { users, machines, shifts, schedules, tasks, taskProofs, notifications } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { TRPCError } from "@trpc/server";
-import bcrypt from "bcryptjs";
+import * as bcrypt from "bcryptjs";
 import { createSignedUploadParams, isCloudinaryConfigured } from "../upload";
 
 function todayDateString() {

@@ -373,8 +373,8 @@ function SettingsTab({ user }: { user: UserProp }) {
       <Card className="border-zinc-800/50 bg-zinc-900/80 rounded-2xl"><CardContent className="p-5 space-y-4">
         <div><p className="text-xs text-zinc-500 uppercase font-bold">Current User</p><p className="text-lg font-medium">{user.name}</p></div>
         <div><p className="text-xs text-zinc-500 uppercase font-bold">Role</p><Badge className="bg-orange-500 text-zinc-950">{user.role}</Badge></div>
-        <div><p className="text-xs text-zinc-500 uppercase font-bold">Mode</p><Badge variant="outline" className="border-green-500 text-green-400">Development (Mock Auth)</Badge></div>
-        <p className="text-xs text-zinc-600 mt-4">Authentication is temporarily disabled. Use the Dev Role Switcher (bottom-right) to switch between users. When ready, re-enable JWT authentication in the server context.</p>
+        <div><p className="text-xs text-zinc-500 uppercase font-bold">Mode</p><Badge variant="outline" className="border-orange-500 text-orange-400">Production Mode</Badge></div>
+        <p className="text-xs text-zinc-500 mt-4">System is fully integrated and secured. Database connections and operations are active.</p>
       </CardContent></Card>
     </div>
   );

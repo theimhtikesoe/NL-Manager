@@ -1,6 +1,6 @@
 import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
 import type { Request, Response } from "express-serve-static-core";
-import jwt from "jsonwebtoken";
+import * as jwt from "jsonwebtoken";
 import { eq } from "drizzle-orm";
 import { ENV } from "./env";
 import { getDb } from "../db";
