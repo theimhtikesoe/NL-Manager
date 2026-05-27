@@ -8,9 +8,6 @@ function validateEnv() {
 
   if (missing.length > 0) {
     console.error("[ENV] Missing required environment variables:", missing.join(", "));
-    if (process.env.NODE_ENV === "production") {
-      throw new Error(`Missing required environment variables: ${missing.join(", ")}`);
-    }
   }
 }
 
@@ -25,6 +22,8 @@ export const ENV = {
   cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME ?? "",
   cloudinaryApiKey: process.env.CLOUDINARY_API_KEY ?? "",
   cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET ?? "",
+  forgeApiUrl: process.env.FORGE_API_URL ?? "",
+  forgeApiKey: process.env.FORGE_API_KEY ?? "",
   nodeEnv: process.env.NODE_ENV || "development",
   isProduction: process.env.NODE_ENV === "production",
   isDevelopment: process.env.NODE_ENV !== "production",
