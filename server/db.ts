@@ -9,7 +9,17 @@ export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
       if (!_pool) {
-        _pool = new Pool({ connectionString: process.env.DATABASE_URL });
+        _pool = new Pool({
+          connectionString: process.env.DATABASE_URL,
+          ssl: process.env.DATABASE_URL.includes("neon.tech") || process.env.NODE_ENV === "production"
+            ? { rejectUnauthorized: false }
+            : undefined,
+        });
+        
+        // Prevent idle client errors from crashing the Node process in serverless env
+        _pool.on("error", (err) => {
+          console.error("[Database] Idle client pool error:", err.message);
+        });
       }
       _db = drizzle(_pool, { schema });
     } catch (error) {
