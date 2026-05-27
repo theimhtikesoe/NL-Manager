@@ -120,10 +120,22 @@ function DevRoleSwitcher() {
   );
 }
 
+function LoginRedirect() {
+  const [, setLocation] = useLocation();
+  useEffect(() => {
+    localStorage.setItem("nl_mock_user", "admin");
+    setLocation("/admin");
+  }, [setLocation]);
+  return <PageLoader />;
+}
+
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
+      <Route path="/login" component={LoginRedirect} />
+      <Route path="/signin" component={LoginRedirect} />
+      <Route path="/auth" component={LoginRedirect} />
       <Route path="/admin">
         <MockUserRoute username="admin" component={AdminDashboard} />
       </Route>
@@ -137,7 +149,7 @@ function Router() {
         <MockUserRoute username="worker03" component={WorkerWorkspace} />
       </Route>
       <Route path="/404" component={NotFound} />
-      <Route component={NotFound} />
+      <Route component={Home} />
     </Switch>
   );
 }
