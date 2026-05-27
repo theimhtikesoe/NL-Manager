@@ -2,8 +2,8 @@ import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { users } from "../../drizzle/schema";
-import * as bcrypt from "bcryptjs";
-import * as jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 import { getDb } from "../db";
 import { TRPCError } from "@trpc/server";
 

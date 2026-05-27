@@ -1,31 +1,17 @@
-import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
-import type { Request, Response } from "express-serve-static-core";
-import jwt from "jsonwebtoken";
+import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
+import { appRouter } from "../../../../server/routers/index";
+import { getDb } from "../../../../server/db";
+import { users } from "../../../../drizzle/schema";
 import { eq } from "drizzle-orm";
-import { ENV } from "./env";
-import { getDb } from "../db";
-import { users } from "../../drizzle/schema";
+import jwt from "jsonwebtoken";
+import { ENV } from "../../../../server/_core/env";
+import type { TrpcContext, AuthUser } from "../../../../server/_core/context";
 
-export type AuthUser = {
-  id: number;
-  username: string;
-  name: string;
-  role: "admin" | "worker";
-};
-
-export type TrpcContext = {
-  req: Request;
-  res: Response;
-  user: AuthUser | null;
-};
-
-export async function createContext(
-  opts: CreateExpressContextOptions
-): Promise<TrpcContext> {
+async function createContext(req: Request): Promise<TrpcContext> {
   let user: AuthUser | null = null;
 
   // Mock Auth via x-mock-user header
-  const mockUsername = opts.req.headers["x-mock-user"] as string | undefined;
+  const mockUsername = req.headers.get("x-mock-user");
   if (mockUsername) {
     try {
       const db = await getDb();
@@ -37,7 +23,7 @@ export async function createContext(
           .limit(1);
         if (dbUser) {
           user = dbUser;
-          return { req: opts.req, res: opts.res, user };
+          return { req: req as any, res: {} as any, user };
         }
       }
     } catch (error) {
@@ -50,12 +36,12 @@ export async function createContext(
       name: isAdmin ? "System Admin" : mockUsername,
       role: isAdmin ? "admin" : "worker",
     };
-    return { req: opts.req, res: opts.res, user };
+    return { req: req as any, res: {} as any, user };
   }
 
   // Standard JWT Auth
   try {
-    const authHeader = opts.req.headers.authorization;
+    const authHeader = req.headers.get("authorization");
     if (authHeader?.startsWith("Bearer ")) {
       const token = authHeader.split(" ")[1];
       try {
@@ -70,5 +56,18 @@ export async function createContext(
     user = null;
   }
 
-  return { req: opts.req, res: opts.res, user };
+  return { req: req as any, res: {} as any, user };
 }
+
+const handler = (req: Request) =>
+  fetchRequestHandler({
+    endpoint: "/api/trpc",
+    req,
+    router: appRouter,
+    createContext: () => createContext(req),
+    onError({ path, error }) {
+      console.error(`[tRPC Error] at "${path}":`, error.message);
+    },
+  });
+
+export { handler as GET, handler as POST };
