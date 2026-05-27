@@ -17,7 +17,7 @@ if (typeof process !== "undefined") {
 
 export const ENV = {
   databaseUrl: process.env.DATABASE_URL ?? "",
-  jwtSecret: process.env.JWT_SECRET ?? "",
+  jwtSecret: process.env.JWT_SECRET || "fallback_secret",
   cloudinaryUrl: process.env.CLOUDINARY_URL ?? "",
   cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME ?? "",
   cloudinaryApiKey: process.env.CLOUDINARY_API_KEY ?? "",
