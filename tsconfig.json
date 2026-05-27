@@ -32,7 +32,6 @@
     "baseUrl": ".",
     "types": [
       "node",
-      "vite/client",
       "@vercel/node"
     ],
     "paths": {
